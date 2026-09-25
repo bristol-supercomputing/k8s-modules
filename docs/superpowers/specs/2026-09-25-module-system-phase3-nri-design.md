@@ -59,7 +59,8 @@ message.
 
 ### Deployment
 
-The DaemonSet `module-nri` runs in the release namespace and tolerates all
+The DaemonSet `module-nri` runs in `modulesNamespace` (a pod can only mount
+PVCs in its own namespace) and tolerates all
 taints, so it runs on every node. Its init container copies `module-hook` to
 the host directory `nri.hookDir`, which defaults to `/opt/brics-modules/bin`.
 The main container mounts:
