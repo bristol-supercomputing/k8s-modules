@@ -8,6 +8,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	v1 "github.com/bristol-supercomputing/k8s-modules/api/v1alpha1"
@@ -364,4 +365,34 @@ func TestModuleOneDefaultPerFamily(t *testing.T) {
 		}
 		return nil
 	})
+}
+
+func TestAdmissionForgedAnnotationUnderOtherKey(t *testing.T) {
+	fam := newFamily("hidden")
+	m := imageModule(fam, "1", withAccess(map[string]string{"tier": "gold"}))
+	create(t, m)
+	m = waitResolved(t, m.Name)
+	ns := newNamespace(t, nil)
+	// The restricted module's value filed under an unrelated family key would
+	// otherwise reference no Module and escape the consistency check.
+	other := v1.AnnotationResolvedPrefix + newFamily("other")
+	reject(t, func() *corev1.Pod {
+		p := newPod(ns, "")
+		p.Annotations[other] = m.Status.Resolved.Annotations[v1.AnnotationResolvedPrefix+fam]
+		return p
+	}, "must name a module of family")
+}
+
+func TestAdmissionStatusSubresourceCannotChangeAnnotations(t *testing.T) {
+	fam := newFamily("status")
+	m := imageModule(fam, "1")
+	create(t, m)
+	m = waitResolved(t, m.Name)
+	ns := newNamespace(t, nil)
+	p := admit(t, func() *corev1.Pod { return newPod(ns, m.Name) }, hasAnnotations(m.Status.Resolved.Annotations))
+	patch := []byte(`{"metadata":{"annotations":{"` + v1.AnnotationResolvedPrefix + fam + `":"forged;src=pvc:x/y"}}}`)
+	err := k8s.Status().Patch(ctx, p, client.RawPatch(types.MergePatchType, patch))
+	if err == nil || !strings.Contains(err.Error(), "cannot be changed after the pod is created") {
+		t.Fatalf("status patch of module annotations: err = %v", err)
+	}
 }

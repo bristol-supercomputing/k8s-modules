@@ -31,6 +31,13 @@ Out of scope for this cycle (later phases):
 - CXI DRA driver changes.
 - Init and ephemeral containers. Only `spec.containers` receive mounts and env.
 
+**Known limit on forgery:** admission rejects a `resolved.*` value whose
+module is not of the key's family, and any value that differs from what an
+existing Module it names would write. It cannot reject a value naming a Module
+that does not exist (that needs cross-param reasoning). The phase-3 NRI plugin
+must therefore re-check every annotation against the Module catalogue and never
+act on an annotation alone.
+
 **Known limit until phase 3:** `host` and `pvc` modules are resolved and
 annotated, but nothing applies them at runtime. A pod that loads one is
 admitted and starts without those libraries. Fail-closed behaviour arrives with
@@ -49,10 +56,12 @@ the NRI plugin.
 3. **Tampering is narrowed, not eliminated.** A user can write annotations for
    a module they are allowed to load and that is consistent with everything
    else in the pod. That is equivalent to loading it. They cannot forge a
-   value, bypass access or break consistency. A strict "only what `load`
+   value, bypass access or break consistency (with one gap, a value naming a
+   Module that does not exist; see the known limit on forgery under Scope). A strict "only what `load`
    implies" rule needs cross-param reasoning that CEL cannot do.
 4. **Volume names are sanitised.** Pod volume names must be DNS labels, so
-   `mod-nccl-2.29.2` becomes `mod-nccl-2-29-2`.
+   `mod-nccl-2.29.2` becomes `mod-nccl-2-29-2-a6b4217c` (a hash suffix keeps
+   sanitised names unique).
 5. **`spec.mountPath` is removed.** A module is always mounted at
    `/opt/modules/<family>/<version>`. Separate families can then never
    overlap, so no overlap check is needed.
@@ -185,10 +194,10 @@ status:
   resolved:
     modules: [nccl-2.29.2, libfabric-host, aws-ofi-nccl-1.18.0]    # sorted by (rank, name)
     volumes:                 # image sources only
-    - name: mod-nccl-2-29-2
+    - name: mod-nccl-2-29-2-a6b4217c
       reference: registry.isambard/modules/nccl@sha256:...
     mounts:                  # image sources only
-    - name: mod-nccl-2-29-2
+    - name: mod-nccl-2-29-2-a6b4217c
       mountPath: /opt/modules/nccl/2.29.2
     env:                     # union of env.set across the closure, sorted by name
     - {name: NCCL_NET, value: "AWS Libfabric"}
@@ -200,8 +209,11 @@ status:
 ```
 
 **Volume name:** `mod-` + the module name, lowercased, with every character
-outside `[a-z0-9-]` replaced by `-`. If that is longer than 63 characters, it is
-cut to 54 and given `-` + the first 8 hex characters of the name's SHA-256.
+outside `[a-z0-9-]` replaced by `-`. If that changed the name, or the result is
+longer than 63 characters, it is cut to at most 54 characters and given `-` +
+the first 8 hex characters of the name's SHA-256. Sanitising alone is lossy
+(`nccl-2.29.2` and `nccl-2-29.2` would share `mod-nccl-2-29-2`), so e.g.
+`nccl-2.29.2` becomes `mod-nccl-2-29-2-a6b4217c`.
 
 **Resolved annotation value.** The fields appear in this fixed order, separated
 by `;`. Optional fields are omitted when empty.
@@ -295,7 +307,10 @@ It matches pods on CREATE and UPDATE.
   the key `resolved.modules.brics.ac.uk/<r>` exists (a family default). The
   message: `module "<r>" was not loaded: not found, not resolved, or not
   permitted in namespace "<ns>" (kubectl get module <r>)`.
-- **UPDATE:** the `modules.brics.ac.uk/load` annotation and every
+- **CREATE, family keys:** every `resolved.modules.brics.ac.uk/<f>` value
+  starts with `<f>-`, so the value names a module of that family and the
+  consistency policy compares it.
+- **UPDATE** (including `pods/status`, which can also write annotations): the `modules.brics.ac.uk/load` annotation and every
   `resolved.modules.brics.ac.uk/*` and `env.modules.brics.ac.uk/*` annotation
   are unchanged from `oldObject`.
 
