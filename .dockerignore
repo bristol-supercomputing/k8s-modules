@@ -1,0 +1,6 @@
+bin/
+deploy/
+docs/
+test/
+.git/
+.superpowers/
