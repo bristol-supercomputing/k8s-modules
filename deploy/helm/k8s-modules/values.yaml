@@ -1,0 +1,12 @@
+image:
+  repository: ghcr.io/bristol-supercomputing/module-controller
+  tag: ""
+  pullPolicy: IfNotPresent
+modulesNamespace: module-system
+registryAllowlist:
+  - registry.isambard/modules/
+envPrefixAllowlist: [NCCL_, FI_, CXIP_, UCX_, OMPI_]
+controller:
+  replicas: 1
+  leaderElect: true
+  resources: {}

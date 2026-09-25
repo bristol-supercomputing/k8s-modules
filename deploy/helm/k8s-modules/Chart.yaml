@@ -1,0 +1,7 @@
+apiVersion: v2
+name: k8s-modules
+description: Module CRD, controller and admission policies for loading shared-library modules into pods
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.36.0-0"

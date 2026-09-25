@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: module-controller
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "k8s-modules.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.controller.replicas }}
+  selector:
+    matchLabels: {{- include "k8s-modules.selector" . | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "k8s-modules.labels" . | nindent 8 }}
+    spec:
+      serviceAccountName: module-controller
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+      - name: controller
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        args:
+        - --modules-namespace={{ .Values.modulesNamespace }}
+        - --leader-elect={{ .Values.controller.leaderElect }}
+        - --metrics-bind-address=:8080
+        - --health-probe-bind-address=:8081
+        ports:
+        - {name: metrics, containerPort: 8080}
+        - {name: probes, containerPort: 8081}
+        livenessProbe: {httpGet: {path: /healthz, port: probes}}
+        readinessProbe: {httpGet: {path: /readyz, port: probes}}
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities: {drop: [ALL]}
+        resources: {{- toYaml .Values.controller.resources | nindent 10 }}
