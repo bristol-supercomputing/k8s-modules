@@ -13,6 +13,12 @@ const (
 	MountRoot        = "/opt/modules"
 	EnvLDLibraryPath = "LD_LIBRARY_PATH"
 
+	AnnotationContainers      = "modules.brics.ac.uk/containers"
+	AnnotationRequiredPlugins = "required-plugins.noderesource.dev/pod"
+	RequiredPluginsValue      = `["modules"]`
+	NRIPluginName             = "modules"
+	LabelHostPrefix           = "modules.brics.ac.uk/host-"
+
 	ConditionResolved     = "Resolved"
 	ConditionConflictFree = "ConflictFree"
 )
@@ -86,6 +92,14 @@ type ImageSource struct {
 
 type HostSource struct {
 	Discover HostDiscover `json:"discover"`
+	// PreferHost lists dependency sonames placed in lib/ (prepended to
+	// LD_LIBRARY_PATH) instead of deps/, for when the image's copy is known
+	// to be incompatible.
+	// +optional
+	// +kubebuilder:validation:MaxItems=16
+	// +kubebuilder:validation:items:MaxLength=128
+	// +kubebuilder:validation:items:Pattern=`^lib[A-Za-z0-9_.+-]+\.so(\.[0-9]+)*$`
+	PreferHost []string `json:"preferHost,omitempty"`
 }
 
 type HostDiscover struct {

@@ -1,0 +1,111 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: modulenodereports.modules.brics.ac.uk
+spec:
+  group: modules.brics.ac.uk
+  names:
+    kind: ModuleNodeReport
+    listKind: ModuleNodeReportList
+    plural: modulenodereports
+    shortNames:
+    - mnr
+    singular: modulenodereport
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.discoveredAt
+      name: Discovered
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          ModuleNodeReport records what the module NRI plugin discovered on one
+          node. It is named after the node and owned by it.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          status:
+            properties:
+              discoveredAt:
+                format: date-time
+                type: string
+              modules:
+                items:
+                  description: HostModuleReport is the discovered closure of one host
+                    Module.
+                  properties:
+                    closureHash:
+                      type: string
+                    deps:
+                      items:
+                        properties:
+                          path:
+                            type: string
+                          soname:
+                            type: string
+                        required:
+                        - path
+                        - soname
+                        type: object
+                      type: array
+                    family:
+                      type: string
+                    glibcRequired:
+                      type: string
+                    lib:
+                      items:
+                        properties:
+                          path:
+                            type: string
+                          soname:
+                            type: string
+                        required:
+                        - path
+                        - soname
+                        type: object
+                      type: array
+                    message:
+                      type: string
+                    missing:
+                      items:
+                        type: string
+                      type: array
+                    module:
+                      type: string
+                    ready:
+                      type: boolean
+                  required:
+                  - family
+                  - module
+                  - ready
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - module
+                x-kubernetes-list-type: map
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

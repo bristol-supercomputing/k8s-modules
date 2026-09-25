@@ -136,6 +136,17 @@ spec:
                         required:
                         - roots
                         type: object
+                      preferHost:
+                        description: |-
+                          PreferHost lists dependency sonames placed in lib/ (prepended to
+                          LD_LIBRARY_PATH) instead of deps/, for when the image's copy is known
+                          to be incompatible.
+                        items:
+                          maxLength: 128
+                          pattern: ^lib[A-Za-z0-9_.+-]+\.so(\.[0-9]+)*$
+                          type: string
+                        maxItems: 16
+                        type: array
                     required:
                     - discover
                     type: object
