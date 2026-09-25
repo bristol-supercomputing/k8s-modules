@@ -24,7 +24,9 @@ step "1. cluster and registry"
 if ! $CONTAINER_CLI inspect "$REG_NAME" >/dev/null 2>&1; then
   $CONTAINER_CLI run -d --restart=always -p "127.0.0.1:${REG_PORT}:5000" --name "$REG_NAME" docker.io/library/registry:3
 fi
-if ! kind get clusters 2>/dev/null | grep -qx "$CLUSTER"; then
+# `kind get nodes`, not `kind get clusters`: the latter breaks on podman 6
+# (kind v0.31 formats `podman ps` labels as a map, podman 6 returns a list).
+if [[ -z "$(kind get nodes --name "$CLUSTER" 2>/dev/null)" ]]; then
   kind create cluster --name "$CLUSTER" --image "$NODE_IMAGE" --config "$ROOT/deploy/kind/kind-config.yaml"
 fi
 $CONTAINER_CLI network connect kind "$REG_NAME" 2>/dev/null || true
