@@ -23,7 +23,9 @@ func TestCRDValidation(t *testing.T) {
 		}, ""},
 		{"name mismatch", func(m *v1.Module) { m.Name = m.Name + "x" }, "metadata.name must be <spec.family>-<spec.version>"},
 		{"tag not digest", func(m *v1.Module) { m.Spec.Source.Image.Reference = testRegistry + "x:latest" }, "spec.source.image.reference"},
-		{"uppercase digest", func(m *v1.Module) { m.Spec.Source.Image.Reference = testRegistry + "x@sha256:" + strings.Repeat("A", 64) }, "spec.source.image.reference"},
+		{"uppercase digest", func(m *v1.Module) {
+			m.Spec.Source.Image.Reference = testRegistry + "x@sha256:" + strings.Repeat("A", 64)
+		}, "spec.source.image.reference"},
 		{"two sources", func(m *v1.Module) {
 			m.Spec.Source.Host = &v1.HostSource{Discover: v1.HostDiscover{Roots: []string{"libx.so"}}}
 		}, "exactly one of image, host or pvc"},

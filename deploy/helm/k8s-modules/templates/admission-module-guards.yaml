@@ -1,0 +1,33 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: module-guards.modules.brics.ac.uk
+  labels: {{- include "k8s-modules.labels" . | nindent 4 }}
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+    - {apiGroups: [modules.brics.ac.uk], apiVersions: [v1alpha1], operations: [CREATE, UPDATE], resources: [modules]}
+  variables:
+  - name: registries
+    expression: |-
+      {{ toJson .Values.registryAllowlist }}
+  - name: envPrefixes
+    expression: |-
+      {{ toJson .Values.envPrefixAllowlist }}
+  validations:
+  - expression: "!has(object.spec.source.image) || variables.registries.exists(p, object.spec.source.image.reference.startsWith(p))"
+    messageExpression: "'image ' + object.spec.source.image.reference + ' is not in an allowed registry (' + variables.registries.join(', ') + ')'"
+  - expression: "!has(object.spec.env) || !has(object.spec.env.set) || object.spec.env.set.all(k, variables.envPrefixes.exists(p, k.startsWith(p)))"
+    messageExpression: >-
+      'env.set name ' + object.spec.env.set.filter(k, !variables.envPrefixes.exists(p, k.startsWith(p)))[0] +
+      ' must start with one of ' + variables.envPrefixes.join(', ')
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: module-guards.modules.brics.ac.uk
+  labels: {{- include "k8s-modules.labels" . | nindent 4 }}
+spec:
+  policyName: module-guards.modules.brics.ac.uk
+  validationActions: [Deny]

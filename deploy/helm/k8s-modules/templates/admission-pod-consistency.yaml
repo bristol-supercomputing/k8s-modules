@@ -1,0 +1,66 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: pod-consistency.modules.brics.ac.uk
+  labels: {{- include "k8s-modules.labels" . | nindent 4 }}
+spec:
+  failurePolicy: Fail
+  paramKind: {apiVersion: modules.brics.ac.uk/v1alpha1, kind: Module}
+  matchConstraints:
+    {{- include "k8s-modules.podPolicyNamespaces" . | nindent 4 }}
+    resourceRules:
+    - {apiGroups: [""], apiVersions: [v1], operations: [CREATE], resources: [pods]}
+  matchConditions:
+  - name: has-module-annotations
+    expression: >-
+      has(object.metadata.annotations) && object.metadata.annotations.exists(k,
+        k == 'modules.brics.ac.uk/load' || k.startsWith('resolved.modules.brics.ac.uk/'))
+  variables:
+  - name: anns
+    expression: "object.metadata.annotations"
+  - name: requested
+    expression: "'modules.brics.ac.uk/load' in variables.anns ? variables.anns['modules.brics.ac.uk/load'].split(',').map(s, s.trim()).filter(s, s != '') : []"
+  - name: isDefault
+    expression: "has(params.metadata.labels) && 'modules.brics.ac.uk/default' in params.metadata.labels && params.metadata.labels['modules.brics.ac.uk/default'] == 'true'"
+  - name: familyKey
+    expression: "'resolved.modules.brics.ac.uk/' + params.spec.family"
+  - name: isRequested
+    expression: "params.metadata.name in variables.requested || (params.spec.family in variables.requested && variables.isDefault)"
+  - name: references
+    expression: >-
+      variables.isRequested ||
+      (variables.familyKey in variables.anns && variables.anns[variables.familyKey].startsWith(params.metadata.name + ';'))
+  - name: isResolved
+    expression: "has(params.status) && has(params.status.resolved)"
+  - name: nsAllowed
+    expression: >-
+      !has(params.spec.access) || !has(params.spec.access.matchLabels) ||
+      params.spec.access.matchLabels.all(k, has(namespaceObject.metadata.labels) &&
+        k in namespaceObject.metadata.labels && namespaceObject.metadata.labels[k] == params.spec.access.matchLabels[k])
+  - name: mismatched
+    expression: >-
+      variables.references && variables.isResolved ?
+        params.status.resolved.annotations.filter(k, !(k in variables.anns) || variables.anns[k] != params.status.resolved.annotations[k]) : []
+  validations:
+  - expression: "!variables.isRequested || variables.isResolved"
+    messageExpression: >-
+      'module "' + params.metadata.name + '" is not resolved: ' +
+      (has(params.status) && has(params.status.conditions) && params.status.conditions.exists(c, c.type == 'Resolved') ?
+        params.status.conditions.filter(c, c.type == 'Resolved')[0].message : 'the module controller has not processed it yet')
+  - expression: "!variables.references || variables.nsAllowed"
+    messageExpression: "'module \"' + params.metadata.name + '\" is not permitted in namespace \"' + namespaceObject.metadata.name + '\"'"
+  - expression: "variables.mismatched.size() == 0"
+    messageExpression: >-
+      'module "' + params.metadata.name + '" requires ' + variables.mismatched[0] + '=' +
+      params.status.resolved.annotations[variables.mismatched[0]] + ', but the pod has ' +
+      (variables.mismatched[0] in variables.anns ? variables.anns[variables.mismatched[0]] : '<unset>')
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: pod-consistency.modules.brics.ac.uk
+  labels: {{- include "k8s-modules.labels" . | nindent 4 }}
+spec:
+  policyName: pod-consistency.modules.brics.ac.uk
+  validationActions: [Deny]
+  paramRef: {selector: {}, parameterNotFoundAction: Allow}

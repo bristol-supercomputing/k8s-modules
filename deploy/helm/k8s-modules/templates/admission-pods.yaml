@@ -1,0 +1,59 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: pods.modules.brics.ac.uk
+  labels: {{- include "k8s-modules.labels" . | nindent 4 }}
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    {{- include "k8s-modules.podPolicyNamespaces" . | nindent 4 }}
+    resourceRules:
+    - {apiGroups: [""], apiVersions: [v1], operations: [CREATE, UPDATE], resources: [pods]}
+  matchConditions:
+  - name: has-module-annotations
+    expression: >-
+      (has(object.metadata.annotations) && object.metadata.annotations.exists(k,
+        k == 'modules.brics.ac.uk/load' || k.startsWith('resolved.modules.brics.ac.uk/') || k.startsWith('env.modules.brics.ac.uk/'))) ||
+      (request.operation == 'UPDATE' && has(oldObject.metadata.annotations) && oldObject.metadata.annotations.exists(k,
+        k == 'modules.brics.ac.uk/load' || k.startsWith('resolved.modules.brics.ac.uk/') || k.startsWith('env.modules.brics.ac.uk/')))
+  variables:
+  - name: anns
+    expression: "has(object.metadata.annotations) ? object.metadata.annotations : {}"
+  - name: oldAnns
+    expression: "request.operation == 'UPDATE' && has(oldObject.metadata.annotations) ? oldObject.metadata.annotations : {}"
+  - name: requested
+    expression: "'modules.brics.ac.uk/load' in variables.anns ? variables.anns['modules.brics.ac.uk/load'].split(',').map(s, s.trim()).filter(s, s != '') : []"
+  - name: badNames
+    expression: "variables.requested.filter(r, r.size() > 61 || !r.matches('^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$'))"
+  - name: unknown
+    expression: >-
+      variables.requested.filter(r,
+        !(('resolved.modules.brics.ac.uk/' + r) in variables.anns) &&
+        !variables.anns.exists(k, k.startsWith('resolved.modules.brics.ac.uk/') && variables.anns[k].startsWith(r + ';')))
+  validations:
+  - expression: "request.operation != 'CREATE' || variables.requested.size() <= 32"
+    message: "modules.brics.ac.uk/load lists more than 32 modules"
+  - expression: "request.operation != 'CREATE' || variables.badNames.size() == 0"
+    messageExpression: "'invalid module name \"' + variables.badNames[0] + '\" in modules.brics.ac.uk/load'"
+  - expression: "request.operation != 'CREATE' || variables.badNames.size() > 0 || variables.unknown.size() == 0"
+    messageExpression: >-
+      'module "' + variables.unknown[0] + '" was not loaded: not found, not resolved, not permitted in namespace "' +
+      request.namespace + '", or in conflict with another loaded module (kubectl get module ' + variables.unknown[0] + ')'
+  - expression: >-
+      request.operation != 'UPDATE' || (
+        variables.oldAnns.all(k,
+          !(k == 'modules.brics.ac.uk/load' || k.startsWith('resolved.modules.brics.ac.uk/') || k.startsWith('env.modules.brics.ac.uk/')) ||
+          (k in variables.anns && variables.anns[k] == variables.oldAnns[k])) &&
+        variables.anns.all(k,
+          !(k == 'modules.brics.ac.uk/load' || k.startsWith('resolved.modules.brics.ac.uk/') || k.startsWith('env.modules.brics.ac.uk/')) ||
+          k in variables.oldAnns))
+    message: "module annotations (modules.brics.ac.uk/load, resolved.modules.brics.ac.uk/*, env.modules.brics.ac.uk/*) cannot be changed after the pod is created"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: pods.modules.brics.ac.uk
+  labels: {{- include "k8s-modules.labels" . | nindent 4 }}
+spec:
+  policyName: pods.modules.brics.ac.uk
+  validationActions: [Deny]

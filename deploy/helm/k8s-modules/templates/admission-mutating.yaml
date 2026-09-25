@@ -1,0 +1,64 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingAdmissionPolicy
+metadata:
+  name: modules.brics.ac.uk
+  labels: {{- include "k8s-modules.labels" . | nindent 4 }}
+spec:
+  failurePolicy: Fail
+  paramKind: {apiVersion: modules.brics.ac.uk/v1alpha1, kind: Module}
+  matchConstraints:
+    {{- include "k8s-modules.podPolicyNamespaces" . | nindent 4 }}
+    resourceRules:
+    - {apiGroups: [""], apiVersions: [v1], operations: [CREATE], resources: [pods]}
+  matchConditions:
+  - name: has-load
+    expression: "has(object.metadata.annotations) && 'modules.brics.ac.uk/load' in object.metadata.annotations"
+  variables:
+  - name: requested
+    expression: "object.metadata.annotations['modules.brics.ac.uk/load'].split(',').map(s, s.trim()).filter(s, s != '')"
+  - name: isDefault
+    expression: "has(params.metadata.labels) && 'modules.brics.ac.uk/default' in params.metadata.labels && params.metadata.labels['modules.brics.ac.uk/default'] == 'true'"
+  - name: isRequested
+    expression: "params.metadata.name in variables.requested || (params.spec.family in variables.requested && variables.isDefault)"
+  - name: nsAllowed
+    expression: >-
+      !has(params.spec.access) || !has(params.spec.access.matchLabels) ||
+      params.spec.access.matchLabels.all(k, has(namespaceObject.metadata.labels) &&
+        k in namespaceObject.metadata.labels && namespaceObject.metadata.labels[k] == params.spec.access.matchLabels[k])
+  - name: applies
+    expression: "has(params.status) && has(params.status.resolved) && variables.isRequested && variables.nsAllowed"
+  - name: volumes
+    expression: "variables.applies && has(params.status.resolved.volumes) ? params.status.resolved.volumes : []"
+  - name: mounts
+    expression: "variables.applies && has(params.status.resolved.mounts) ? params.status.resolved.mounts : []"
+  - name: env
+    expression: "variables.applies && has(params.status.resolved.env) ? params.status.resolved.env : []"
+  reinvocationPolicy: IfNeeded
+  mutations:
+  - patchType: ApplyConfiguration
+    applyConfiguration:
+      expression: >-
+        !variables.applies ? Object{} :
+        Object{
+          metadata: Object.metadata{annotations: params.status.resolved.annotations},
+          spec: Object.spec{
+            volumes: variables.volumes.map(v, Object.spec.volumes{
+              name: v.name,
+              image: Object.spec.volumes.image{reference: v.reference, pullPolicy: "IfNotPresent"}
+            }),
+            containers: object.spec.containers.map(c, Object.spec.containers{
+              name: c.name,
+              volumeMounts: variables.mounts.map(m, Object.spec.containers.volumeMounts{name: m.name, mountPath: m.mountPath, readOnly: true}),
+              env: variables.env.filter(e, !has(c.env) || !c.env.exists(ce, ce.name == e.name)).map(e, Object.spec.containers.env{name: e.name, value: e.value})
+            })
+          }
+        }
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingAdmissionPolicyBinding
+metadata:
+  name: modules.brics.ac.uk
+  labels: {{- include "k8s-modules.labels" . | nindent 4 }}
+spec:
+  policyName: modules.brics.ac.uk
+  paramRef: {selector: {}, parameterNotFoundAction: Allow}
