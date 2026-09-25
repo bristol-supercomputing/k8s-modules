@@ -27,7 +27,7 @@ In scope:
   - the `ModuleNodeReport` kind;
   - `spec.source.host.preferHost`.
 - Admission additions:
-  - the `modules.brics.ac.uk/containers` and `required-plugins.nri.io/pod`
+  - the `modules.brics.ac.uk/containers` and `required-plugins.noderesource.dev/pod`
     annotations;
   - the report-writer policy.
 - Controller addition: node labels from reports.
@@ -263,8 +263,13 @@ the container's mount namespace, after the mounts are set up and before
 1. Read the OCI state JSON from stdin, and read `<bundle>/config.json`. The
    rootfs is `root.path`, joined to `bundle` when relative.
 2. Resolve every path under the rootfs, with symlinks confined to the rootfs.
-   Write `<rootfs>/etc/ld.so.conf.d/zz-brics-modules.conf` with one `--deps`
-   directory per line.
+   Write `<rootfs>/etc/ld.so.conf.d/zz-brics-modules.conf`. It first lists
+   the image's trusted directories that exist (`/lib64`, `/usr/lib64`,
+   `/lib`, `/usr/lib`), then one `--deps` directory per line. `ldconfig`
+   scans the trusted directories last, so without them first a library that
+   the image keeps only in `/usr/lib` would lose to the host copy (verified
+   in a spike). Multiarch directories are already listed by the image's
+   earlier `conf.d` files.
    - If `ld.so.conf.d` is absent, create it.
    - If `etc/ld.so.conf` has no `include ld.so.conf.d/*.conf` line, append
      one.
@@ -294,10 +299,10 @@ The hook writes errors to stderr and exits 1, which fails the container.
   Module, it also sets two annotations:
   - `modules.brics.ac.uk/containers`, set to
     `object.spec.containers.map(c, c.name).join(',')`;
-  - `required-plugins.nri.io/pod`, set to `["modules"]`.
+  - `required-plugins.noderesource.dev/pod`, set to `["modules"]`.
 - **`pods.modules.brics.ac.uk`:**
   - **CREATE:** if any `resolved.*` annotation is present, `containers` must
-    equal the joined container names, and `required-plugins.nri.io/pod` must
+    equal the joined container names, and `required-plugins.noderesource.dev/pod` must
     equal `["modules"]`.
   - **UPDATE:** both keys join the immutable set. Their matchCondition also
     covers them.
@@ -327,7 +332,7 @@ Nodes must enable NRI's default validator:
   enable = true
 ```
 
-Without it, `required-plugins.nri.io/pod` has no effect, and a module pod on a
+Without it, `required-plugins.noderesource.dev/pod` has no effect, and a module pod on a
 node without the plugin starts without its modules. The kind config sets this
 through `containerdConfigPatches`, and the chart's README states the
 requirement.
