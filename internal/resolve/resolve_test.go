@@ -38,8 +38,8 @@ func TestResolveSingle(t *testing.T) {
 	}
 	want := &v1.Resolved{
 		Modules: []string{"nccl-2.29.2"},
-		Volumes: []v1.ResolvedVolume{{Name: "mod-nccl-2-29-2", Reference: m.Spec.Source.Image.Reference}},
-		Mounts:  []v1.ResolvedMount{{Name: "mod-nccl-2-29-2", MountPath: "/opt/modules/nccl/2.29.2"}},
+		Volumes: []v1.ResolvedVolume{{Name: VolumeName("nccl-2.29.2"), Reference: m.Spec.Source.Image.Reference}},
+		Mounts:  []v1.ResolvedMount{{Name: VolumeName("nccl-2.29.2"), MountPath: "/opt/modules/nccl/2.29.2"}},
 		Env:     []v1.ResolvedEnvVar{{Name: "NCCL_NET", Value: "AWS Libfabric"}},
 		Annotations: map[string]string{
 			"resolved.modules.brics.ac.uk/nccl": "nccl-2.29.2;rank=10;src=image;mount=/opt/modules/nccl/2.29.2;lib=/opt/modules/nccl/2.29.2/lib",

@@ -25,11 +25,13 @@ func VolumeName(moduleName string) string {
 		}
 		return '-'
 	}, strings.ToLower(moduleName))
-	if len(n) <= 63 {
+	// Sanitising is lossy (nccl-2.29.2 and nccl-2-29.2 both become
+	// mod-nccl-2-29-2), so any changed or overlong name gets a hash suffix.
+	if len(n) <= 63 && n == "mod-"+moduleName {
 		return n
 	}
 	sum := sha256.Sum256([]byte(moduleName))
-	return n[:54] + "-" + hex.EncodeToString(sum[:])[:8]
+	return n[:min(len(n), 54)] + "-" + hex.EncodeToString(sum[:])[:8]
 }
 
 func ResolvedAnnotationKey(family string) string { return v1.AnnotationResolvedPrefix + family }

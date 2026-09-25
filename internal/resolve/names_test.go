@@ -45,13 +45,27 @@ func withLib(paths ...string) func(*v1.Module) {
 func TestVolumeName(t *testing.T) {
 	long := strings.Repeat("f", 40) + "-" + strings.Repeat("9", 20)
 	cases := []struct{ in, want string }{
-		{"nccl-2.29.2", "mod-nccl-2-29-2"},
+		// Sanitising is lossy, so a changed name carries a hash of the original.
+		{"nccl-2.29.2", "mod-nccl-2-29-2-a6b4217c"},
 		{"libfabric-host", "mod-libfabric-host"},
-		{"a-1.0_rc", "mod-a-1-0-rc"},
+		{"a-1.0_rc", "mod-a-1-0-rc-3c5ac3c1"},
 	}
 	for _, c := range cases {
 		if got := VolumeName(c.in); got != c.want {
 			t.Errorf("VolumeName(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+	// Distinct Modules must never share a volume name: family nccl version
+	// 2.29.2, family nccl-2 version 29.2, and family nccl-2-29 version 2.
+	seen := map[string]string{}
+	for _, n := range []string{"nccl-2.29.2", "nccl-2-29.2", "nccl-2-29-2"} {
+		v := VolumeName(n)
+		if prev, ok := seen[v]; ok {
+			t.Errorf("VolumeName(%q) == VolumeName(%q) == %q", n, prev, v)
+		}
+		seen[v] = n
+		if errs := validation.IsDNS1123Label(v); len(errs) > 0 {
+			t.Errorf("%q is not a DNS label: %v", v, errs)
 		}
 	}
 	got := VolumeName(long)
