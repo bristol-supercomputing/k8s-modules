@@ -1,0 +1,3 @@
+GLIBC_2.17 { global: fake_217; local: *; };
+GLIBC_2.28 { global: fake_228; } GLIBC_2.17;
+GLIBC_2.31 { global: fake_231; } GLIBC_2.28;
