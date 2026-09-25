@@ -1999,9 +1999,10 @@ func TestAdjustRejectsCatalogueMismatch(t *testing.T) {
 			t.Errorf("%s: err = %v", name, err)
 		}
 	}
-	x.Status.Resolved = nil // Module became unresolved after admission
-	if _, err := a.Adjust(podFor(catalogue(t, mod("x", "1", img)), "main", "x-1"), ctr("main")); err == nil {
-		t.Error("unresolved module must be refused")
+	p := podFor(c, "main", "x-1")
+	x.Status.Resolved = nil // the Module became unresolved after admission
+	if _, err := a.Adjust(p, ctr("main")); err == nil || !strings.Contains(err.Error(), "does not match the Module catalogue") {
+		t.Errorf("unresolved module: err = %v", err)
 	}
 }
 
