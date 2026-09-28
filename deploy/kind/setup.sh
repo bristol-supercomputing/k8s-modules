@@ -37,6 +37,22 @@ for node in $(kind get nodes --name "$CLUSTER"); do
 done
 kubectl config use-context "kind-$CLUSTER" >/dev/null
 
+step "1b. stub host libraries on every node"
+# shellcheck disable=SC2086
+$CONTAINER_CLI build $BUILD_ARGS --target host-libs -t localhost/brics-host-libs:dev "$ROOT/test/images/host-libs"
+LIBS=$(mktemp -d)
+CID=$($CONTAINER_CLI create localhost/brics-host-libs:dev /none)
+$CONTAINER_CLI cp "$CID:/usr/lib/brics-test" "$LIBS/"
+$CONTAINER_CLI rm "$CID" >/dev/null
+for node in $(kind get nodes --name "$CLUSTER"); do
+  $CONTAINER_CLI exec "$node" rm -rf /usr/lib/brics-test
+  $CONTAINER_CLI cp "$LIBS/brics-test" "$node:/usr/lib/brics-test"
+  echo /usr/lib/brics-test | $CONTAINER_CLI exec -i "$node" tee /etc/ld.so.conf.d/brics-test.conf >/dev/null
+  $CONTAINER_CLI exec "$node" ldconfig
+  $CONTAINER_CLI exec "$node" sh -c 'mkdir -p /var/lib/brics-test/pvc/lib && echo stub > /var/lib/brics-test/pvc/lib/libpvc.so'
+done
+rm -rf "$LIBS"
+
 step "2. build and push images"
 # shellcheck disable=SC2086
 $CONTAINER_CLI build $BUILD_ARGS -t "localhost:${REG_PORT}/module-controller:dev" "$ROOT"
@@ -50,16 +66,30 @@ DIGEST=$(curl -fsSI \
   "http://localhost:${REG_PORT}/v2/modules/nccl-fake/manifests/2.29.2" |
   awk -F': ' 'tolower($1)=="docker-content-digest"{print $2}' | tr -d '\r')
 [[ "$DIGEST" == sha256:* ]] || { echo "could not read nccl-fake digest" >&2; exit 1; }
+# shellcheck disable=SC2086
+$CONTAINER_CLI build $BUILD_ARGS -f "$ROOT/Dockerfile.nri" -t "localhost:${REG_PORT}/module-nri:dev" "$ROOT"
+$CONTAINER_CLI push "${PUSH_FLAGS[@]}" "localhost:${REG_PORT}/module-nri:dev"
+for target in client client-old; do
+  # shellcheck disable=SC2086
+  $CONTAINER_CLI build $BUILD_ARGS --target "$target" -t "localhost:${REG_PORT}/fakefabric-$target:dev" "$ROOT/test/images/host-libs"
+  $CONTAINER_CLI push "${PUSH_FLAGS[@]}" "localhost:${REG_PORT}/fakefabric-$target:dev"
+done
 
 step "3. install chart"
+kubectl create namespace module-system --dry-run=client -o yaml | kubectl apply -f -
+kubectl apply -f "$ROOT/deploy/kind/pv-spack-apps.yaml"
 helm upgrade --install k8s-modules "$ROOT/deploy/helm/k8s-modules" \
-  --namespace module-system --create-namespace \
+  --namespace module-system \
   --set image.repository="${REG_NAME}:5000/module-controller" \
   --set image.tag=dev --set image.pullPolicy=Always \
+  --set nri.image.repository="${REG_NAME}:5000/module-nri" \
+  --set nri.image.tag=dev --set nri.image.pullPolicy=Always \
+  --set "nri.pvcs={spack-apps}" \
   --set "registryAllowlist={${REG_NAME}:5000/modules/}" \
   --wait --timeout 3m
-kubectl -n module-system rollout restart deployment/module-controller
+kubectl -n module-system rollout restart deployment/module-controller daemonset/module-nri
 kubectl -n module-system rollout status deployment/module-controller --timeout=2m
+kubectl -n module-system rollout status daemonset/module-nri --timeout=3m
 
 step "4. create nccl-2.29.2"
 kubectl apply -f - <<EOF

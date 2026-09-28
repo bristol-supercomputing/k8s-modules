@@ -5,3 +5,7 @@ featureGates:
 nodes:
 - role: control-plane
 - role: worker
+containerdConfigPatches:
+- |-
+  [plugins."io.containerd.nri.v1.nri".default_validator]
+    enable = true

@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: brics-test-spack-apps
+spec:
+  capacity: {storage: 1Gi}
+  accessModes: [ReadOnlyMany]
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  hostPath: {path: /var/lib/brics-test/pvc, type: Directory}
+  claimRef: {namespace: module-system, name: spack-apps}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: spack-apps
+  namespace: module-system
+spec:
+  accessModes: [ReadOnlyMany]
+  storageClassName: ""
+  volumeName: brics-test-spack-apps
+  resources: {requests: {storage: 1Gi}}
