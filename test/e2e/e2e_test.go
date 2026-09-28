@@ -13,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -99,13 +100,14 @@ func waitReason(t *testing.T, c client.Client, name, reason string) {
 // waits for it to succeed.
 func runPod(t *testing.T, c client.Client, ns, load, script string) {
 	t.Helper()
-	p := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{Name: "check", Namespace: ns, Annotations: map[string]string{v1.AnnotationLoad: load}},
-		Spec: corev1.PodSpec{RestartPolicy: corev1.RestartPolicyNever, Containers: []corev1.Container{{
-			Name: "check", Image: "docker.io/library/busybox:1.37", Command: []string{"sh", "-ec", script},
-		}}},
-	}
+	runPodSpec(t, c, shellPod(ns, "check", "docker.io/library/busybox:1.37", load, script))
+}
+
+// runPodSpec creates p and waits for it to succeed, printing its logs on failure.
+func runPodSpec(t *testing.T, c client.Client, p *corev1.Pod) {
+	t.Helper()
 	waitFor(t, 30*time.Second, func() error { return c.Create(ctx, p) })
+	t.Cleanup(func() { _ = c.Delete(ctx, p) })
 	waitFor(t, 3*time.Minute, func() error {
 		if err := c.Get(ctx, client.ObjectKeyFromObject(p), p); err != nil {
 			return err
@@ -114,10 +116,31 @@ func runPod(t *testing.T, c client.Client, ns, load, script string) {
 		case corev1.PodSucceeded:
 			return nil
 		case corev1.PodFailed:
-			t.Fatalf("pod failed: %+v", p.Status.ContainerStatuses)
+			t.Fatalf("pod %s failed: %s", p.Name, podLogs(p))
 		}
-		return fmt.Errorf("pod phase %s", p.Status.Phase)
+		return fmt.Errorf("pod %s phase %s %+v", p.Name, p.Status.Phase, p.Status.ContainerStatuses)
 	})
+}
+
+func podLogs(p *corev1.Pod) string {
+	cs, err := kubernetes.NewForConfig(ctrl.GetConfigOrDie())
+	if err != nil {
+		return err.Error()
+	}
+	b, err := cs.CoreV1().Pods(p.Namespace).GetLogs(p.Name, &corev1.PodLogOptions{}).DoRaw(ctx)
+	if err != nil {
+		return err.Error()
+	}
+	return string(b)
+}
+
+func shellPod(ns, name, image, load, script string) *corev1.Pod {
+	return &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns, Annotations: map[string]string{v1.AnnotationLoad: load}},
+		Spec: corev1.PodSpec{RestartPolicy: corev1.RestartPolicyNever, Containers: []corev1.Container{{
+			Name: "check", Image: image, Command: []string{"sh", "-ec", script},
+		}}},
+	}
 }
 
 func expectRejected(t *testing.T, c client.Client, ns, load string, substrs ...string) {
