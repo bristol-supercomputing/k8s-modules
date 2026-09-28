@@ -1,0 +1,30 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: module-reports.modules.brics.ac.uk
+  labels: {{- include "k8s-modules.labels" . | nindent 4 }}
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+    - apiGroups: [modules.brics.ac.uk]
+      apiVersions: [v1alpha1]
+      operations: [CREATE, UPDATE]
+      resources: [modulenodereports, modulenodereports/status]
+  matchConditions:
+  - name: node-bound-caller
+    expression: "'authentication.kubernetes.io/node-name' in request.userInfo.extra"
+  validations:
+  - expression: "object.metadata.name == request.userInfo.extra['authentication.kubernetes.io/node-name'][0]"
+    messageExpression: >-
+      'a node may only write its own ModuleNodeReport (caller is on node ' +
+      request.userInfo.extra['authentication.kubernetes.io/node-name'][0] + ')'
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: module-reports.modules.brics.ac.uk
+  labels: {{- include "k8s-modules.labels" . | nindent 4 }}
+spec:
+  policyName: module-reports.modules.brics.ac.uk
+  validationActions: [Deny]

@@ -10,3 +10,12 @@ controller:
   replicas: 1
   leaderElect: true
   resources: {}
+nri:
+  image:
+    repository: ghcr.io/bristol-supercomputing/module-nri
+    tag: ""
+    pullPolicy: IfNotPresent
+  hookDir: /opt/brics-modules/bin
+  pvcs: []
+  discoveryInterval: 10m
+  resources: {}
