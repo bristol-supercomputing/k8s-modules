@@ -105,3 +105,32 @@ func TestModuleReportNodeIdentity(t *testing.T) {
 	admin := &v1.ModuleNodeReport{ObjectMeta: metav1.ObjectMeta{Name: b}}
 	create(t, admin)
 }
+
+// NRI's validator gives required-plugins.noderesource.dev/container.<name>
+// precedence over /pod, so any other required-plugins key on a module pod
+// would let it start without the plugin.
+func TestAdmissionRejectsOtherRequiredPluginsKeys(t *testing.T) {
+	m := imageModule(newFamily("nrikey"), "1")
+	create(t, m)
+	m = waitResolved(t, m.Name)
+	ns := newNamespace(t, nil)
+	for _, key := range []string{
+		"required-plugins.noderesource.dev/container.main",
+		"required-plugins.noderesource.dev",
+	} {
+		reject(t, func() *corev1.Pod {
+			p := newPod(ns, m.Name)
+			p.Annotations[key] = "[]"
+			return p
+		}, "may not set other required-plugins.noderesource.dev annotations")
+	}
+	p := admit(t, func() *corev1.Pod { return newPod(ns, m.Name) }, hasAnnotations(m.Status.Resolved.Annotations))
+	cur := &corev1.Pod{}
+	if err := k8s.Get(ctx, client.ObjectKeyFromObject(p), cur); err != nil {
+		t.Fatal(err)
+	}
+	cur.Annotations["required-plugins.noderesource.dev/container.main"] = "[]"
+	if err := k8s.Update(ctx, cur); err == nil || !strings.Contains(err.Error(), "cannot be changed after the pod is created") {
+		t.Errorf("adding a container-scoped key on UPDATE: err = %v", err)
+	}
+}

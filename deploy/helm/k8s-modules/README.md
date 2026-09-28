@@ -15,13 +15,17 @@ that inject modules into pods, and the `module-nri` DaemonSet.
   ```
 
   Without the validator, a module pod on a node without the plugin starts
-  without its modules.
+  without its modules. Leave the validator's `tolerate_missing_plugins_annotation`
+  unset: any annotation it names would let a module pod opt out.
 
 ## Limits
 
-- Pods loading `host` modules need a glibc-based image with `ldconfig` and
-  a writable `/etc` (`readOnlyRootFilesystem: true` is not supported).
+- Pods loading `host` modules need a glibc-based image and a writable
+  `/etc` (`readOnlyRootFilesystem: true` is not supported). module-hook
+  rebuilds the image's ld cache with its own static `ldconfig`; it never runs
+  code from the image.
 - Every claim used by a `pvc` module must be listed in `nri.pvcs` and exist
   in `modulesNamespace`.
 - Pods that load modules carry `required-plugins.noderesource.dev/pod:
-  '["modules"]'`, which cannot be combined with other required plugins.
+  '["modules"]'` and may not set any other `required-plugins.noderesource.dev`
+  annotation (a container-scoped one would override it).

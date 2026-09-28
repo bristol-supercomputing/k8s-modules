@@ -13,9 +13,9 @@ spec:
   - name: has-module-annotations
     expression: >-
       (has(object.metadata.annotations) && object.metadata.annotations.exists(k,
-        k == 'modules.brics.ac.uk/load' || k.startsWith('resolved.modules.brics.ac.uk/') || k.startsWith('env.modules.brics.ac.uk/') || k == 'modules.brics.ac.uk/containers' || k == 'required-plugins.noderesource.dev/pod')) ||
+        k == 'modules.brics.ac.uk/load' || k.startsWith('resolved.modules.brics.ac.uk/') || k.startsWith('env.modules.brics.ac.uk/') || k == 'modules.brics.ac.uk/containers' || k.startsWith('required-plugins.noderesource.dev'))) ||
       (request.operation == 'UPDATE' && has(oldObject.metadata.annotations) && oldObject.metadata.annotations.exists(k,
-        k == 'modules.brics.ac.uk/load' || k.startsWith('resolved.modules.brics.ac.uk/') || k.startsWith('env.modules.brics.ac.uk/') || k == 'modules.brics.ac.uk/containers' || k == 'required-plugins.noderesource.dev/pod'))
+        k == 'modules.brics.ac.uk/load' || k.startsWith('resolved.modules.brics.ac.uk/') || k.startsWith('env.modules.brics.ac.uk/') || k == 'modules.brics.ac.uk/containers' || k.startsWith('required-plugins.noderesource.dev')))
   variables:
   - name: anns
     expression: "has(object.metadata.annotations) ? object.metadata.annotations : {}"
@@ -53,12 +53,12 @@ spec:
   - expression: >-
       request.operation != 'UPDATE' || (
         variables.oldAnns.all(k,
-          !(k == 'modules.brics.ac.uk/load' || k.startsWith('resolved.modules.brics.ac.uk/') || k.startsWith('env.modules.brics.ac.uk/') || k == 'modules.brics.ac.uk/containers' || k == 'required-plugins.noderesource.dev/pod') ||
+          !(k == 'modules.brics.ac.uk/load' || k.startsWith('resolved.modules.brics.ac.uk/') || k.startsWith('env.modules.brics.ac.uk/') || k == 'modules.brics.ac.uk/containers' || k.startsWith('required-plugins.noderesource.dev')) ||
           (k in variables.anns && variables.anns[k] == variables.oldAnns[k])) &&
         variables.anns.all(k,
-          !(k == 'modules.brics.ac.uk/load' || k.startsWith('resolved.modules.brics.ac.uk/') || k.startsWith('env.modules.brics.ac.uk/') || k == 'modules.brics.ac.uk/containers' || k == 'required-plugins.noderesource.dev/pod') ||
+          !(k == 'modules.brics.ac.uk/load' || k.startsWith('resolved.modules.brics.ac.uk/') || k.startsWith('env.modules.brics.ac.uk/') || k == 'modules.brics.ac.uk/containers' || k.startsWith('required-plugins.noderesource.dev')) ||
           k in variables.oldAnns))
-    message: "module annotations (modules.brics.ac.uk/load, resolved.modules.brics.ac.uk/*, env.modules.brics.ac.uk/*, modules.brics.ac.uk/containers, required-plugins.noderesource.dev/pod) cannot be changed after the pod is created"
+    message: "module annotations (modules.brics.ac.uk/load, resolved.modules.brics.ac.uk/*, env.modules.brics.ac.uk/*, modules.brics.ac.uk/containers, required-plugins.noderesource.dev*) cannot be changed after the pod is created"
   - expression: >-
       request.operation != 'CREATE' || !variables.hasResolved ||
       ('modules.brics.ac.uk/containers' in variables.anns &&
@@ -69,6 +69,12 @@ spec:
       ('required-plugins.noderesource.dev/pod' in variables.anns &&
        variables.anns['required-plugins.noderesource.dev/pod'] == '["modules"]')
     message: "required-plugins.noderesource.dev/pod must be [\"modules\"] on pods that load modules"
+  # NRI's validator prefers /container.<name> and the bare key over /pod,
+  # so either would let a module pod start without the plugin.
+  - expression: >-
+      request.operation != 'CREATE' || !variables.hasResolved ||
+      !variables.anns.exists(k, k.startsWith('required-plugins.noderesource.dev') && k != 'required-plugins.noderesource.dev/pod')
+    message: "pods that load modules may not set other required-plugins.noderesource.dev annotations"
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicyBinding
