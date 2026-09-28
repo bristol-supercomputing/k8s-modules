@@ -120,6 +120,12 @@ func (h *Host) Discover(roots, preferHost []string) Result {
 				continue
 			}
 			visited[n] = true
+			// ld.so loads a name containing '/' as a path; it is not a
+			// soname, and as a bind destination it would escape the mount.
+			if strings.Contains(n, "/") || n == "." || n == ".." {
+				fail("%s needs %q, which is a path, not a soname", it.soname, n)
+				continue
+			}
 			p, ok := h.lookup(n, origin, rpath, runpath)
 			if !ok {
 				res.Missing = append(res.Missing, n)

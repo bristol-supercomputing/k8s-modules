@@ -24,6 +24,10 @@ so "$L/librpath.so.1" librpath.so.1 "$S/originuser.c" -Wl,--disable-new-dtags,-r
 so /tmp/gone/libgone.so.1 libgone.so.1 "$S/fakedep.c"
 so "$L/libneedsgone.so.1" libneedsgone.so.1 "$S/originuser.c" -L/tmp/gone -l:libgone.so.1
 
+# A library whose DT_NEEDED is a path, not a soname: linking a library that
+# has no soname by relative path records the path as given.
+mkdir -p /tmp/w && gcc -shared -fPIC -o /tmp/w/libweird.so "$S/fakedep.c"
+(cd /tmp && gcc -shared -fPIC -o "$L/libpathdep.so.1" -Wl,-soname,libpathdep.so.1 "$S/originuser.c" w/libweird.so)
 echo /usr/lib/brics-test > "$H/etc/ld.so.conf"
 ldconfig -X -r "$H" -f /etc/ld.so.conf -C /etc/ld.so.cache
 dpkg --print-architecture > "$H/ARCH"

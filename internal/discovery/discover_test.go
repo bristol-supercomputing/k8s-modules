@@ -122,3 +122,17 @@ func TestDiscoverHashStable(t *testing.T) {
 		t.Errorf("hash stable=%v distinct=%v", a.Hash == b.Hash, a.Hash != c.Hash)
 	}
 }
+
+// ld.so treats a DT_NEEDED containing '/' as a path, not a soname; used as
+// a bind destination it would land outside <mount>/deps.
+func TestDiscoverRejectsPathLikeNeeded(t *testing.T) {
+	r := host(t).Discover([]string{"libpathdep.so.1"}, nil)
+	if r.Ready || r.Message != `libpathdep.so.1 needs "w/libweird.so", which is a path, not a soname` {
+		t.Errorf("path-like DT_NEEDED: %+v", r)
+	}
+	for _, l := range append(r.Lib, r.Deps...) {
+		if strings.Contains(l.Soname, "/") {
+			t.Errorf("path-like soname %q in the closure", l.Soname)
+		}
+	}
+}
