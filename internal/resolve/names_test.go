@@ -6,7 +6,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/util/validation"
 
-	v1 "github.com/bristol-supercomputing/k8s-modules/api/v1alpha1"
+	v1 "github.com/isambard-sc/k8s-modules/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 

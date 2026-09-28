@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bristol-supercomputing/k8s-modules/internal/hook"
+	"github.com/isambard-sc/k8s-modules/internal/hook"
 )
 
 type repeated []string

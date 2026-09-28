@@ -15,7 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	v1 "github.com/bristol-supercomputing/k8s-modules/api/v1alpha1"
+	v1 "github.com/isambard-sc/k8s-modules/api/v1alpha1"
 )
 
 const probeNS = "policy-probe"

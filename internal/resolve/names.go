@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	v1 "github.com/bristol-supercomputing/k8s-modules/api/v1alpha1"
+	v1 "github.com/isambard-sc/k8s-modules/api/v1alpha1"
 )
 
 // MountPath is where a module is mounted in every container.

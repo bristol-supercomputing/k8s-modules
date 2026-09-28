@@ -1,4 +1,4 @@
-module github.com/bristol-supercomputing/k8s-modules
+module github.com/isambard-sc/k8s-modules
 
 go 1.26.0
 

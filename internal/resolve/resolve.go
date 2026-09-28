@@ -3,7 +3,7 @@ package resolve
 import (
 	"sort"
 
-	v1 "github.com/bristol-supercomputing/k8s-modules/api/v1alpha1"
+	v1 "github.com/isambard-sc/k8s-modules/api/v1alpha1"
 )
 
 // Resolve flattens the dependency closure of the named Module.

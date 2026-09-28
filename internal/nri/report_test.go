@@ -4,8 +4,8 @@ import (
 	"reflect"
 	"testing"
 
-	v1 "github.com/bristol-supercomputing/k8s-modules/api/v1alpha1"
-	"github.com/bristol-supercomputing/k8s-modules/internal/discovery"
+	v1 "github.com/isambard-sc/k8s-modules/api/v1alpha1"
+	"github.com/isambard-sc/k8s-modules/internal/discovery"
 )
 
 func TestBuildReport(t *testing.T) {

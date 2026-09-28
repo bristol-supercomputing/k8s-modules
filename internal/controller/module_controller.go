@@ -21,8 +21,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	v1 "github.com/bristol-supercomputing/k8s-modules/api/v1alpha1"
-	"github.com/bristol-supercomputing/k8s-modules/internal/resolve"
+	v1 "github.com/isambard-sc/k8s-modules/api/v1alpha1"
+	"github.com/isambard-sc/k8s-modules/internal/resolve"
 )
 
 // ErrPVCInvalid reports a pvc-sourced module whose claim is unusable.

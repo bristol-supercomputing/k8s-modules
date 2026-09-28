@@ -11,8 +11,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/bristol-supercomputing/k8s-modules/internal/fsutil"
-	"github.com/bristol-supercomputing/k8s-modules/internal/glibc"
+	"github.com/isambard-sc/k8s-modules/internal/fsutil"
+	"github.com/isambard-sc/k8s-modules/internal/glibc"
 )
 
 // Library is one file of a closure. Path is the real host path.

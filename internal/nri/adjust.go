@@ -9,8 +9,8 @@ import (
 
 	api "github.com/containerd/nri/pkg/api"
 
-	v1 "github.com/bristol-supercomputing/k8s-modules/api/v1alpha1"
-	"github.com/bristol-supercomputing/k8s-modules/internal/discovery"
+	v1 "github.com/isambard-sc/k8s-modules/api/v1alpha1"
+	"github.com/isambard-sc/k8s-modules/internal/discovery"
 )
 
 // Catalogue looks up Modules, normally from an informer cache.

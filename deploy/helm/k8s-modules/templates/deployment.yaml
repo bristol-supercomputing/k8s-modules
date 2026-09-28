@@ -13,6 +13,9 @@ spec:
       labels: {{- include "k8s-modules.labels" . | nindent 8 }}
     spec:
       serviceAccountName: module-controller
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
       securityContext:
         runAsNonRoot: true
         seccompProfile: {type: RuntimeDefault}

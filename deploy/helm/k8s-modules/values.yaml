@@ -1,7 +1,10 @@
 image:
-  repository: ghcr.io/bristol-supercomputing/module-controller
+  repository: ghcr.io/isambard-sc/module-controller
   tag: ""
   pullPolicy: IfNotPresent
+# Secrets (in the release namespace and in modulesNamespace) for pulling the
+# controller and module-nri images, e.g. from a private ghcr.io package.
+imagePullSecrets: []
 modulesNamespace: module-system
 registryAllowlist:
   - registry.isambard/modules/
@@ -12,7 +15,7 @@ controller:
   resources: {}
 nri:
   image:
-    repository: ghcr.io/bristol-supercomputing/module-nri
+    repository: ghcr.io/isambard-sc/module-nri
     tag: ""
     pullPolicy: IfNotPresent
   hookDir: /opt/brics-modules/bin

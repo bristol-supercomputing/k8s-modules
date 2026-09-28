@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	v1 "github.com/bristol-supercomputing/k8s-modules/api/v1alpha1"
+	v1 "github.com/isambard-sc/k8s-modules/api/v1alpha1"
 )
 
 func deps(d ...string) func(*v1.Module) { return func(m *v1.Module) { m.Spec.DependsOn = d } }

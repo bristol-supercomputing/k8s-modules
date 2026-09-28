@@ -1,0 +1,212 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+    paths:
+      - "Dockerfile"
+      - "Dockerfile.nri"
+      - ".dockerignore"
+      - ".github/workflows/build.yaml"
+      - "Makefile"
+      - "go.mod"
+      - "go.sum"
+      - "api/**"
+      - "cmd/**"
+      - "internal/**"
+      # envtest renders the chart's admission policies, so chart changes
+      # must pass the tests too.
+      - "deploy/helm/**"
+      - "test/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "Dockerfile"
+      - "Dockerfile.nri"
+      - ".dockerignore"
+      - ".github/workflows/build.yaml"
+      - "Makefile"
+      - "go.mod"
+      - "go.sum"
+      - "api/**"
+      - "cmd/**"
+      - "internal/**"
+      # envtest renders the chart's admission policies, so chart changes
+      # must pass the tests too.
+      - "deploy/helm/**"
+      - "test/**"
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # The envtest suite runs `helm template` to install the admission
+      # policies it tests.
+      - name: Set up Helm
+        uses: azure/setup-helm@v5
+
+      - name: Generated code is up to date
+        run: |
+          make generate manifests
+          git diff --exit-code -- api deploy/helm/k8s-modules/crds
+
+      - name: Build and vet
+        run: make build
+
+      - name: Unit tests
+        run: make test
+
+      # Runs a real kube-apiserver 1.36 with the CRDs, the controller and
+      # every admission policy.
+      - name: envtest
+        run: make test-envtest
+
+  # One job per image and architecture on native runners; emulating arm64
+  # under QEMU is slow. Each job pushes by digest; `merge` assembles the
+  # multi-arch manifest lists and applies the tags.
+  build:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - {name: module-controller, file: Dockerfile}
+          - {name: module-nri, file: Dockerfile.nri}
+        arch:
+          - {platform: linux/amd64, name: amd64, runner: ubuntu-24.04}
+          - {platform: linux/arm64, name: arm64, runner: ubuntu-24.04-arm}
+    runs-on: ${{ matrix.arch.runner }}
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/${{ github.repository_owner }}/${{ matrix.image.name }}
+      # Same-repo PRs push too (tagged pr-<number>), so a test deployment can
+      # pull a real image before merging. Fork PRs only validate the build.
+      PUSH: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to registry
+        if: env.PUSH == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build (fork PR validation)
+        if: env.PUSH != 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.image.file }}
+          platforms: ${{ matrix.arch.platform }}
+          push: false
+          cache-from: type=gha,scope=${{ matrix.image.name }}-${{ matrix.arch.name }}
+
+      - name: Build and push by digest
+        id: build
+        if: env.PUSH == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.image.file }}
+          platforms: ${{ matrix.arch.platform }}
+          cache-from: type=gha,scope=${{ matrix.image.name }}-${{ matrix.arch.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image.name }}-${{ matrix.arch.name }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+
+      - name: Export digest
+        if: env.PUSH == 'true'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p /tmp/digests
+          touch "/tmp/digests/${DIGEST#sha256:}"
+
+      - name: Upload digest
+        if: env.PUSH == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.image.name }}-${{ matrix.arch.name }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    needs: build
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [module-controller, module-nri]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
+
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digest-${{ matrix.image }}-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=,format=short
+
+      - name: Create manifest list and push
+        working-directory: /tmp/digests
+        run: |
+          mapfile -t tags < <(jq -r '.tags[] | "-t", .' <<<"$DOCKER_METADATA_OUTPUT_JSON")
+          refs=()
+          for digest in *; do refs+=("${IMAGE}@sha256:${digest}"); done
+          docker buildx imagetools create "${tags[@]}" "${refs[@]}"
+
+      - name: Inspect
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: docker buildx imagetools inspect "${IMAGE}:${VERSION}"

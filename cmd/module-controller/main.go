@@ -11,8 +11,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	v1 "github.com/bristol-supercomputing/k8s-modules/api/v1alpha1"
-	"github.com/bristol-supercomputing/k8s-modules/internal/controller"
+	v1 "github.com/isambard-sc/k8s-modules/api/v1alpha1"
+	"github.com/isambard-sc/k8s-modules/internal/controller"
 )
 
 func main() {

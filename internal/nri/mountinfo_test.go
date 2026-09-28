@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bristol-supercomputing/k8s-modules/internal/fsutil"
+	"github.com/isambard-sc/k8s-modules/internal/fsutil"
 )
 
 const selfInfo = `22 1 0:21 / / rw - overlay overlay rw

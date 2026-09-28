@@ -20,7 +20,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/bristol-supercomputing/k8s-modules/internal/glibc"
+	"github.com/isambard-sc/k8s-modules/internal/glibc"
 )
 
 // Options are module-hook's arguments.

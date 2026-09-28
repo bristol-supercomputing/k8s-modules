@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/bristol-supercomputing/k8s-modules/internal/fsutil"
+	"github.com/isambard-sc/k8s-modules/internal/fsutil"
 )
 
 // ErrClaimNotMounted reports a pvc module whose claim the DaemonSet does

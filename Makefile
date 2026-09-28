@@ -1,7 +1,7 @@
 CONTAINER_CLI ?= $(shell command -v docker >/dev/null 2>&1 && echo docker || echo podman)
 BUILD_ARGS ?=
-IMG ?= ghcr.io/bristol-supercomputing/module-controller:dev
-NRI_IMG ?= ghcr.io/bristol-supercomputing/module-nri:dev
+IMG ?= ghcr.io/isambard-sc/module-controller:dev
+NRI_IMG ?= ghcr.io/isambard-sc/module-nri:dev
 ENVTEST_K8S_VERSION ?= 1.36.2
 CONTROLLER_TOOLS_VERSION ?= v0.21.0
 SETUP_ENVTEST_VERSION ?= v0.24.1

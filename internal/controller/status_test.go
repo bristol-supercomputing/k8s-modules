@@ -6,8 +6,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	v1 "github.com/bristol-supercomputing/k8s-modules/api/v1alpha1"
-	"github.com/bristol-supercomputing/k8s-modules/internal/resolve"
+	v1 "github.com/isambard-sc/k8s-modules/api/v1alpha1"
+	"github.com/isambard-sc/k8s-modules/internal/resolve"
 )
 
 func TestSetStatus(t *testing.T) {

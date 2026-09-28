@@ -3,7 +3,7 @@ package nri
 import (
 	"sync/atomic"
 
-	"github.com/bristol-supercomputing/k8s-modules/internal/discovery"
+	"github.com/isambard-sc/k8s-modules/internal/discovery"
 )
 
 // HostState holds the latest discovery results. Discovery replaces the
