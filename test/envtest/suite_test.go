@@ -12,6 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
@@ -25,10 +26,11 @@ import (
 const modulesNamespace = "module-system"
 
 var (
-	k8s    client.Client
-	ctx    context.Context
-	scheme = runtime.NewScheme()
-	chart  = filepath.Join("..", "..", "deploy", "helm", "k8s-modules")
+	restCfg *rest.Config
+	k8s     client.Client
+	ctx     context.Context
+	scheme  = runtime.NewScheme()
+	chart   = filepath.Join("..", "..", "deploy", "helm", "k8s-modules")
 )
 
 func TestMain(m *testing.M) {
@@ -51,6 +53,7 @@ func run(m *testing.M) int {
 		return 1
 	}
 	defer func() { _ = env.Stop() }()
+	restCfg = cfg
 
 	_ = clientgoscheme.AddToScheme(scheme)
 	_ = v1.AddToScheme(scheme)
@@ -74,6 +77,10 @@ func run(m *testing.M) int {
 		return 1
 	}
 	if err := (&controller.ModuleReconciler{Client: mgr.GetClient(), ModulesNamespace: modulesNamespace}).SetupWithManager(mgr); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	if err := (&controller.NodeLabelReconciler{Client: mgr.GetClient()}).SetupWithManager(mgr); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
