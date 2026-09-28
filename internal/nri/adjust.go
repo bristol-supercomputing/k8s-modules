@@ -23,9 +23,11 @@ type HostModules interface {
 	HostModule(name string) (discovery.Result, bool)
 }
 
-// PVCs locates the host path of a claim the DaemonSet mounts.
+// PVCs locates the host path of subPath inside a claim the DaemonSet
+// mounts, resolving subPath inside the PV so its symlinks cannot reach the
+// host.
 type PVCs interface {
-	HostPath(claim string) (string, error)
+	HostPath(claim, subPath string) (string, error)
 }
 
 // Adjuster turns a pod's module annotations into a container adjustment.
@@ -111,11 +113,11 @@ func (a *Adjuster) Adjust(pod *api.PodSandbox, ctr *api.Container) (*api.Contain
 			}
 		case strings.HasPrefix(m.Src, "pvc:"):
 			claim, sub, _ := strings.Cut(strings.TrimPrefix(m.Src, "pvc:"), "/")
-			hp, err := a.PVCs.HostPath(claim)
+			src, err := a.PVCs.HostPath(claim, sub)
 			if err != nil {
 				return nil, err
 			}
-			adj.AddMount(&api.Mount{Destination: m.Mount, Type: "bind", Source: path.Join(hp, sub), Options: rbindOptions})
+			adj.AddMount(&api.Mount{Destination: m.Mount, Type: "bind", Source: src, Options: rbindOptions})
 		}
 	}
 	if len(libDirs) > 0 {

@@ -2,6 +2,7 @@ package nri
 
 import (
 	"errors"
+	"path"
 	"reflect"
 	"strings"
 	"testing"
@@ -24,9 +25,9 @@ func (h fakeHosts) HostModule(n string) (discovery.Result, bool) { r, ok := h[n]
 
 type fakePVCs map[string]string
 
-func (p fakePVCs) HostPath(c string) (string, error) {
+func (p fakePVCs) HostPath(c, sub string) (string, error) {
 	if hp, ok := p[c]; ok {
-		return hp, nil
+		return path.Join(hp, sub), nil
 	}
 	return "", errors.New("pvc claim " + c + " is not mounted by module-nri; add it to nri.pvcs")
 }

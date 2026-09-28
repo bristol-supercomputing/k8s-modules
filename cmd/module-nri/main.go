@@ -35,10 +35,11 @@ func main() {
 		return
 	}
 	var (
-		nodeName, hostRoot, hookPath, pvcDir, pvcs, socket, idx string
-		interval                                                time.Duration
+		nodeName, podUID, hostRoot, hookPath, pvcDir, pvcs, socket, idx string
+		interval                                                        time.Duration
 	)
 	flag.StringVar(&nodeName, "node-name", os.Getenv("NODE_NAME"), "This node's name.")
+	flag.StringVar(&podUID, "pod-uid", os.Getenv("POD_UID"), "This pod's UID, to pick our own PVC mounts.")
 	flag.StringVar(&hostRoot, "host-root", "/host", "Where the host root filesystem is mounted.")
 	flag.StringVar(&hookPath, "hook-path", "/opt/brics-modules/bin/module-hook", "Host path of module-hook.")
 	flag.StringVar(&pvcDir, "pvc-dir", "/pvcs", "Directory holding one mount per configured claim.")
@@ -55,13 +56,13 @@ func main() {
 		log.Error(nil, "--node-name or NODE_NAME is required")
 		os.Exit(1)
 	}
-	if err := run(log, nodeName, hostRoot, hookPath, pvcDir, pvcs, socket, idx, interval); err != nil {
+	if err := run(log, nodeName, podUID, hostRoot, hookPath, pvcDir, pvcs, socket, idx, interval); err != nil {
 		log.Error(err, "exiting")
 		os.Exit(1)
 	}
 }
 
-func run(log logr.Logger, nodeName, hostRoot, hookPath, pvcDir, pvcs, socket, idx string, interval time.Duration) error {
+func run(log logr.Logger, nodeName, podUID, hostRoot, hookPath, pvcDir, pvcs, socket, idx string, interval time.Duration) error {
 	ctx := ctrl.SetupSignalHandler()
 	cfg := ctrl.GetConfigOrDie()
 	scheme := kruntime.NewScheme()
@@ -122,7 +123,7 @@ func run(log logr.Logger, nodeName, hostRoot, hookPath, pvcDir, pvcs, socket, id
 		Catalogue: nri.CacheCatalogue{Reader: modules},
 		Hosts:     state,
 		PVCs: &nri.MountinfoPVCs{Claims: claims, Dir: pvcDir,
-			SelfMountinfo: "/proc/self/mountinfo", HostMountinfo: filepath.Join(hostRoot, "proc/1/mountinfo")},
+			SelfMountinfo: "/proc/self/mountinfo", HostMountinfo: filepath.Join(hostRoot, "proc/1/mountinfo"), PodUID: podUID},
 		NodeName: nodeName,
 		HookPath: hookPath,
 	}}
