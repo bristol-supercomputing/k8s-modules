@@ -31,7 +31,7 @@ build: generate manifests fmt vet
 	go build -o $(LOCALBIN)/ ./cmd/...
 
 test:
-	go test ./api/... ./internal/... -count=1
+	go test ./api/... ./internal/... ./cmd/... -count=1
 
 test-envtest: manifests $(SETUP_ENVTEST)
 	KUBEBUILDER_ASSETS="$$($(SETUP_ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" \
