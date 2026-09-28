@@ -1,8 +1,9 @@
 // Package hook implements module-hook: it adds host-module dependency
 // directories to an image's ld cache and checks the image's glibc. It runs
-// as an OCI createContainer hook, so paths here are host paths into the
-// container's rootfs, and every in-image path is resolved with
-// fsutil.ResolveIn so image symlinks cannot reach outside the rootfs.
+// as an OCI createContainer hook, as host root before pivot_root, on an
+// untrusted image rootfs. So it never executes code from the image, and
+// every rootfs access goes through os.Root, which confines symlink
+// resolution to the rootfs in the kernel (no resolve-then-open race).
 package hook
 
 import (
@@ -17,19 +18,20 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 
-	"github.com/bristol-supercomputing/k8s-modules/internal/fsutil"
 	"github.com/bristol-supercomputing/k8s-modules/internal/glibc"
 )
 
 // Options are module-hook's arguments.
 type Options struct {
-	Deps  []string          // container paths of deps directories
-	Glibc map[string]string // module name -> required GLIBC version
-	Arch  string            // Go architecture, for multiarch lookup
+	Deps     []string          // container paths of deps directories
+	Glibc    map[string]string // module name -> required GLIBC version
+	Arch     string            // Go architecture, for multiarch lookup
+	Ldconfig string            // trusted static ldconfig, shipped with module-hook
 }
 
-// Runner runs the image's ldconfig with rootfs as its root.
+// Runner rebuilds rootfs's ld cache with the trusted ldconfig.
 type Runner interface {
 	Run(rootfs, ldconfig string) error
 }
@@ -42,56 +44,63 @@ const ConfName = "zz-brics-modules.conf"
 // ahead of host copies in the cache.
 var trustedDirs = []string{"/lib64", "/usr/lib64", "/lib", "/usr/lib"}
 
-// Apply writes the ld config, runs ldconfig and checks glibc.
+// Apply writes the ld config, rebuilds the ld cache and checks glibc.
 func Apply(rootfs string, o Options, r Runner) error {
-	if err := writeConf(rootfs, o.Deps); err != nil {
-		return err
-	}
-	ldconfig, err := findLdconfig(rootfs)
+	root, err := os.OpenRoot(rootfs)
 	if err != nil {
 		return err
 	}
-	if err := r.Run(rootfs, ldconfig); err != nil {
+	defer root.Close()
+	if err := writeConf(root, o.Deps); err != nil {
+		return err
+	}
+	if err := r.Run(rootfs, o.Ldconfig); err != nil {
 		return fmt.Errorf("updating the image's ld cache: %w", err)
 	}
 	if len(o.Glibc) == 0 {
 		return nil
 	}
-	return checkGlibc(rootfs, o)
+	return checkGlibc(root, o)
 }
 
-func writeConf(rootfs string, deps []string) error {
+func writeConf(root *os.Root, deps []string) error {
 	var b strings.Builder
 	for _, d := range trustedDirs {
-		if isDir(rootfs, d) {
+		if fi, err := root.Stat(rel(d)); err == nil && fi.IsDir() {
 			b.WriteString(d + "\n")
 		}
 	}
 	for _, d := range deps {
 		b.WriteString(d + "\n")
 	}
-	confd, err := resolveForWrite(rootfs, "/etc/ld.so.conf.d")
+	const confd = "etc/ld.so.conf.d"
+	if err := root.MkdirAll(confd, 0o755); err != nil {
+		return writeErr(err)
+	}
+	// Replace, never follow, whatever the image put at our file's name.
+	name := path.Join(confd, ConfName)
+	if err := root.Remove(name); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return writeErr(err)
+	}
+	f, err := root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
-		return err
+		return writeErr(err)
 	}
-	if err := os.MkdirAll(fsutil.Host(rootfs, confd), 0o755); err != nil {
-		return readOnly(err)
+	if _, err := f.WriteString(b.String()); err != nil {
+		f.Close()
+		return writeErr(err)
 	}
-	if err := os.WriteFile(fsutil.Host(rootfs, path.Join(confd, ConfName)), []byte(b.String()), 0o644); err != nil {
-		return readOnly(err)
+	if err := f.Close(); err != nil {
+		return writeErr(err)
 	}
-	return ensureInclude(rootfs)
+	return ensureInclude(root)
 }
 
-func ensureInclude(rootfs string) error {
-	conf, err := resolveForWrite(rootfs, "/etc/ld.so.conf")
-	if err != nil {
-		return err
-	}
-	file := fsutil.Host(rootfs, conf)
-	data, err := os.ReadFile(file)
+func ensureInclude(root *os.Root) error {
+	const conf = "etc/ld.so.conf"
+	data, err := root.ReadFile(conf)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return err
+		return writeErr(err)
 	}
 	for _, line := range strings.Split(string(data), "\n") {
 		f := strings.Fields(line)
@@ -103,60 +112,24 @@ func ensureInclude(rootfs string) error {
 		data = append(data, '\n')
 	}
 	data = append(data, "include /etc/ld.so.conf.d/*.conf\n"...)
-	if err := os.WriteFile(file, data, 0o644); err != nil {
-		return readOnly(err)
+	if err := root.WriteFile(conf, data, 0o644); err != nil {
+		return writeErr(err)
 	}
 	return nil
 }
 
-// resolveForWrite resolves p inside rootfs; when p does not exist yet, its
-// parent is resolved and p's base name joined to it.
-func resolveForWrite(rootfs, p string) (string, error) {
-	real, err := fsutil.ResolveIn(rootfs, p)
-	if err == nil {
-		return real, nil
+func writeErr(err error) error {
+	if errors.Is(err, fs.ErrPermission) || errors.Is(err, syscall.EROFS) {
+		return fmt.Errorf("host modules need a writable /etc in the image (readOnlyRootFilesystem is not supported): %w", err)
 	}
-	if !errors.Is(err, fs.ErrNotExist) {
-		return "", err
-	}
-	parent, err := fsutil.ResolveIn(rootfs, path.Dir(p))
-	if errors.Is(err, fs.ErrNotExist) {
-		return p, nil
-	}
-	if err != nil {
-		return "", err
-	}
-	return path.Join(parent, path.Base(p)), nil
+	return fmt.Errorf("writing the image's ld config: %w", err)
 }
 
-func readOnly(err error) error {
-	return fmt.Errorf("host modules need a writable /etc in the image (readOnlyRootFilesystem is not supported): %w", err)
-}
+// rel turns an absolute in-image path into an os.Root-relative name.
+func rel(p string) string { return strings.TrimPrefix(path.Clean(p), "/") }
 
-func isDir(rootfs, p string) bool {
-	real, err := fsutil.ResolveIn(rootfs, p)
-	if err != nil {
-		return false
-	}
-	fi, err := os.Stat(fsutil.Host(rootfs, real))
-	return err == nil && fi.IsDir()
-}
-
-func findLdconfig(rootfs string) (string, error) {
-	for _, p := range []string{"/sbin/ldconfig", "/usr/sbin/ldconfig"} {
-		real, err := fsutil.ResolveIn(rootfs, p)
-		if err != nil {
-			continue
-		}
-		if fi, err := os.Stat(fsutil.Host(rootfs, real)); err == nil && fi.Mode().IsRegular() && fi.Mode()&0o111 != 0 {
-			return real, nil
-		}
-	}
-	return "", errors.New("image has no ldconfig; host modules require a glibc-based image")
-}
-
-func checkGlibc(rootfs string, o Options) error {
-	have, err := imageGlibc(rootfs, o.Arch)
+func checkGlibc(root *os.Root, o Options) error {
+	have, err := imageGlibc(root, o.Arch)
 	if err != nil {
 		return err
 	}
@@ -173,37 +146,42 @@ func checkGlibc(rootfs string, o Options) error {
 	return nil
 }
 
-func imageGlibc(rootfs, goarch string) (string, error) {
+func imageGlibc(root *os.Root, goarch string) (string, error) {
 	dirs := []string{"/lib64", "/usr/lib64"}
 	if ma := glibc.Multiarch(goarch); ma != "" {
 		dirs = append(dirs, "/lib/"+ma, "/usr/lib/"+ma)
 	}
 	dirs = append(dirs, "/lib", "/usr/lib")
 	for _, d := range dirs {
-		real, err := fsutil.ResolveIn(rootfs, path.Join(d, "libc.so.6"))
-		if err != nil {
-			continue
-		}
-		f, err := elf.Open(fsutil.Host(rootfs, real))
-		if err != nil {
-			continue
-		}
-		vers, err := f.DynamicVersions()
-		f.Close()
-		if err != nil {
-			continue
-		}
-		have := ""
-		for _, v := range vers {
-			if g, ok := glibc.Version(v.Name); ok && glibc.Less(have, g) {
-				have = g
-			}
-		}
-		if have != "" {
+		have, ok := libcVersion(root, rel(path.Join(d, "libc.so.6")))
+		if ok {
 			return have, nil
 		}
 	}
 	return "", errors.New("image has no glibc libc.so.6; host modules require a glibc-based image")
+}
+
+func libcVersion(root *os.Root, name string) (string, bool) {
+	file, err := root.Open(name)
+	if err != nil {
+		return "", false
+	}
+	defer file.Close()
+	f, err := elf.NewFile(file)
+	if err != nil {
+		return "", false
+	}
+	vers, err := f.DynamicVersions()
+	if err != nil {
+		return "", false
+	}
+	have := ""
+	for _, v := range vers {
+		if g, ok := glibc.Version(v.Name); ok && glibc.Less(have, g) {
+			have = g
+		}
+	}
+	return have, have != ""
 }
 
 // RootFromState reads the OCI state JSON a hook receives on stdin and

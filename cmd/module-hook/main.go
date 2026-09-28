@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/bristol-supercomputing/k8s-modules/internal/hook"
 )
@@ -21,18 +23,27 @@ func (r *repeated) Set(v string) error { *r = append(*r, v); return nil }
 func main() {
 	var deps, glibcs repeated
 	fs := flag.NewFlagSet("module-hook", flag.ContinueOnError)
+	ldconfig := fs.String("ldconfig", besideSelf("ldconfig"), "trusted static ldconfig (never the image's)")
 	fs.Var(&deps, "deps", "container path of a host module deps directory (repeatable)")
 	fs.Var(&glibcs, "glibc", "<module>=<version> the module needs (repeatable)")
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		os.Exit(2)
 	}
-	if err := run(os.Stdin, deps, glibcs); err != nil {
+	if err := run(os.Stdin, *ldconfig, deps, glibcs); err != nil {
 		fmt.Fprintln(os.Stderr, "module-hook:", err)
 		os.Exit(1)
 	}
 }
 
-func run(stdin io.Reader, deps, glibcs []string) error {
+func besideSelf(name string) string {
+	exe, err := os.Executable()
+	if err != nil {
+		return name
+	}
+	return filepath.Join(filepath.Dir(exe), name)
+}
+
+func run(stdin io.Reader, ldconfig string, deps, glibcs []string) error {
 	state, err := io.ReadAll(stdin)
 	if err != nil {
 		return err
@@ -49,5 +60,6 @@ func run(stdin io.Reader, deps, glibcs []string) error {
 		}
 		req[m] = v
 	}
-	return hook.Apply(rootfs, hook.Options{Deps: deps, Glibc: req, Arch: runtime.GOARCH}, hook.ChrootRunner{})
+	return hook.Apply(rootfs, hook.Options{Deps: deps, Glibc: req, Arch: runtime.GOARCH, Ldconfig: ldconfig},
+		hook.TrustedRunner{Timeout: 30 * time.Second})
 }

@@ -10,8 +10,13 @@ ARG TARGETARCH
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w" -o /out/module-nri ./cmd/module-nri && \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w" -o /out/module-hook ./cmd/module-hook
 
+# module-hook runs this static ldconfig (never the image's) as
+# "ldconfig -X -r <rootfs>"; install-hook copies it next to module-hook.
+FROM docker.io/library/debian:bookworm-slim AS ldconfig
+
 # Runs as root: the plugin reads host library files and host mount tables.
 FROM gcr.io/distroless/static
 COPY --from=build /out/module-nri /module-nri
 COPY --from=build /out/module-hook /module-hook
+COPY --from=ldconfig /sbin/ldconfig /ldconfig
 ENTRYPOINT ["/module-nri"]

@@ -138,34 +138,49 @@ func run(log logr.Logger, nodeName, hostRoot, hookPath, pvcDir, pvcs, socket, id
 	return fmt.Errorf("NRI connection closed")
 }
 
+// installHook copies module-hook and the trusted static ldconfig it runs
+// from this image into the host directory the OCI hook path points at.
 func installHook(args []string) error {
 	fs := flag.NewFlagSet("install-hook", flag.ContinueOnError)
-	to := fs.String("to", "/opt/brics-modules/bin", "host directory to install module-hook into")
-	from := fs.String("from", "/module-hook", "module-hook binary in this image")
+	to := fs.String("to", "/opt/brics-modules/bin", "host directory to install into")
+	from := fs.String("from-dir", "/", "directory in this image holding module-hook and ldconfig")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	src, err := os.Open(*from)
-	if err != nil {
-		return err
-	}
-	defer src.Close()
 	if err := os.MkdirAll(*to, 0o755); err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(*to, ".module-hook-")
+	for _, name := range []string{"module-hook", "ldconfig"} {
+		if err := installFile(filepath.Join(*from, name), *to, name); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// installFile copies src to dir/name atomically, so a running hook never
+// sees a half-written binary.
+func installFile(src, dir, name string) error {
+	in, err := os.Open(src)
 	if err != nil {
 		return err
 	}
-	if _, err := io.Copy(tmp, src); err != nil {
+	defer in.Close()
+	tmp, err := os.CreateTemp(dir, "."+name+"-")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := io.Copy(tmp, in); err != nil {
 		tmp.Close()
 		return err
 	}
 	if err := tmp.Chmod(0o755); err != nil {
+		tmp.Close()
 		return err
 	}
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmp.Name(), filepath.Join(*to, "module-hook"))
+	return os.Rename(tmp.Name(), filepath.Join(dir, name))
 }

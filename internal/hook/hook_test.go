@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 type fakeRunner struct{ rootfs, ldconfig string }
@@ -45,7 +46,7 @@ func must(t *testing.T, err error) {
 func TestApplyWritesConfAndRunsLdconfig(t *testing.T) {
 	r := rootfs(t)
 	run := &fakeRunner{}
-	err := Apply(r, Options{Deps: []string{"/opt/modules/fab/host/deps"}, Glibc: map[string]string{"fab-host": "2.28"}, Arch: "arm64"}, run)
+	err := Apply(r, Options{Deps: []string{"/opt/modules/fab/host/deps"}, Glibc: map[string]string{"fab-host": "2.28"}, Arch: "arm64", Ldconfig: "/opt/brics-modules/bin/ldconfig"}, run)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +54,7 @@ func TestApplyWritesConfAndRunsLdconfig(t *testing.T) {
 	if want := "/lib64\n/usr/lib\n/opt/modules/fab/host/deps\n"; string(conf) != want {
 		t.Errorf("conf = %q, want %q (trusted dirs that exist, then deps)", conf, want)
 	}
-	if run.rootfs != r || run.ldconfig != "/usr/sbin/ldconfig" {
+	if run.rootfs != r || run.ldconfig != "/opt/brics-modules/bin/ldconfig" {
 		t.Errorf("runner got %q %q", run.rootfs, run.ldconfig)
 	}
 	main, _ := os.ReadFile(filepath.Join(r, "etc/ld.so.conf"))
@@ -81,8 +82,6 @@ func TestApplyGlibcTooOld(t *testing.T) {
 }
 
 func TestApplyErrors(t *testing.T) {
-	noLdconfig := rootfs(t)
-	must(t, os.Remove(filepath.Join(noLdconfig, "usr/sbin/ldconfig")))
 	noLibc := rootfs(t)
 	must(t, os.Remove(filepath.Join(noLibc, "usr/lib/libc.so.6")))
 	readOnly := rootfs(t)
@@ -93,9 +92,8 @@ func TestApplyErrors(t *testing.T) {
 		root string
 		want string
 	}{
-		"no ldconfig": {noLdconfig, "image has no ldconfig; host modules require a glibc-based image"},
-		"no libc":     {noLibc, "image has no glibc libc.so.6; host modules require a glibc-based image"},
-		"read-only":   {readOnly, "host modules need a writable /etc in the image (readOnlyRootFilesystem is not supported)"},
+		"no libc":   {noLibc, "image has no glibc libc.so.6; host modules require a glibc-based image"},
+		"read-only": {readOnly, "host modules need a writable /etc in the image (readOnlyRootFilesystem is not supported)"},
 	}
 	for name, c := range cases {
 		err := Apply(c.root, Options{Deps: []string{"/d"}, Glibc: map[string]string{"m": "2.17"}, Arch: "arm64"}, &fakeRunner{})
@@ -119,5 +117,81 @@ func TestRootFromState(t *testing.T) {
 	}
 	if _, err := RootFromState([]byte(`{}`)); err == nil {
 		t.Error("missing bundle must fail")
+	}
+}
+
+func TestApplyNeverRunsImageLdconfig(t *testing.T) {
+	r := rootfs(t)
+	must(t, os.Remove(filepath.Join(r, "usr/sbin/ldconfig")))
+	run := &fakeRunner{}
+	if err := Apply(r, Options{Deps: []string{"/d"}, Ldconfig: "/trusted/ldconfig"}, run); err != nil {
+		t.Fatalf("an image without ldconfig must work: %v", err)
+	}
+	if run.ldconfig != "/trusted/ldconfig" {
+		t.Errorf("runner got %q, want the trusted ldconfig", run.ldconfig)
+	}
+}
+
+// The hook writes into an untrusted rootfs as host root before pivot_root,
+// so no image symlink may redirect a write outside the rootfs.
+func TestApplyDoesNotWriteThroughImageSymlinks(t *testing.T) {
+	outside := t.TempDir()
+	victim := filepath.Join(outside, "victim")
+	cases := map[string]func(r string){
+		"conf file is an absolute symlink": func(r string) {
+			must(t, os.Symlink(victim, filepath.Join(r, "etc/ld.so.conf.d", ConfName)))
+		},
+		"conf.d is an absolute symlink": func(r string) {
+			must(t, os.RemoveAll(filepath.Join(r, "etc/ld.so.conf.d")))
+			must(t, os.Symlink(outside, filepath.Join(r, "etc/ld.so.conf.d")))
+		},
+		"conf.d is a dangling absolute symlink": func(r string) {
+			must(t, os.RemoveAll(filepath.Join(r, "etc/ld.so.conf.d")))
+			must(t, os.Symlink(filepath.Join(outside, "newdir"), filepath.Join(r, "etc/ld.so.conf.d")))
+		},
+		"ld.so.conf is an absolute symlink": func(r string) {
+			must(t, os.Remove(filepath.Join(r, "etc/ld.so.conf")))
+			must(t, os.Symlink(victim, filepath.Join(r, "etc/ld.so.conf")))
+		},
+		"conf file is a relative symlink climbing out": func(r string) {
+			rel, err := filepath.Rel(filepath.Join(r, "etc/ld.so.conf.d"), victim)
+			must(t, err)
+			must(t, os.Symlink(rel, filepath.Join(r, "etc/ld.so.conf.d", ConfName)))
+		},
+	}
+	for name, setup := range cases {
+		t.Run(name, func(t *testing.T) {
+			must(t, os.WriteFile(victim, []byte("host file\n"), 0o644))
+			r := rootfs(t)
+			setup(r)
+			_ = Apply(r, Options{Deps: []string{"/d"}, Ldconfig: "/trusted/ldconfig"}, &fakeRunner{})
+			if b, _ := os.ReadFile(victim); string(b) != "host file\n" {
+				t.Errorf("host file outside the rootfs was modified: %q", b)
+			}
+			entries, _ := os.ReadDir(outside)
+			for _, e := range entries {
+				if e.Name() != "victim" {
+					t.Errorf("hook created %s outside the rootfs", e.Name())
+				}
+			}
+		})
+	}
+}
+
+func TestTrustedRunner(t *testing.T) {
+	dir := t.TempDir()
+	argsFile := filepath.Join(dir, "args")
+	script := filepath.Join(dir, "ldconfig")
+	must(t, os.WriteFile(script, []byte("#!/bin/sh\necho \"$@\" > "+argsFile+"\n"), 0o755))
+	if err := (TrustedRunner{Timeout: 5 * time.Second}).Run("/some/rootfs", script); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(argsFile); string(b) != "-X -r /some/rootfs\n" {
+		t.Errorf("ldconfig args = %q, want -X -r /some/rootfs", b)
+	}
+	slow := filepath.Join(dir, "slow")
+	must(t, os.WriteFile(slow, []byte("#!/bin/sh\nsleep 5\n"), 0o755))
+	if err := (TrustedRunner{Timeout: 200 * time.Millisecond}).Run("/r", slow); err == nil {
+		t.Error("a hanging ldconfig must time out")
 	}
 }
