@@ -23,6 +23,10 @@ metadata:
   - masks;
   - fail-closed start when the plugin is absent.
 
+**Writing modules:** [`docs/writing-modules.md`](docs/writing-modules.md)
+covers image modules (preferred), PVC modules (prototyping) and host modules
+(kernel-matched libraries), with worked examples.
+
 Designs: [`docs/superpowers/specs/`](docs/superpowers/specs/).
 
 ## Install

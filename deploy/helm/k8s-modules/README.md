@@ -3,6 +3,9 @@
 Installs the `Module` CRD, the module controller, the admission policies
 that inject modules into pods, and the `module-nri` DaemonSet.
 
+To publish modules once the chart is installed, see
+[docs/writing-modules.md](../../../docs/writing-modules.md).
+
 ## Node requirements
 
 - Kubernetes 1.36+ (MutatingAdmissionPolicy v1, image volumes).
