@@ -25,7 +25,9 @@ that inject modules into pods, and the `module-nri` DaemonSet.
   rebuilds the image's ld cache with its own static `ldconfig`; it never runs
   code from the image.
 - Every claim used by a `pvc` module must be listed in `nri.pvcs` and exist
-  in `modulesNamespace`.
+  in `modulesNamespace`. Its contents must be writable only by admins: `subPath` is
+  resolved inside the PV when a container is created, but a writer could
+  still swap a directory for a symlink between that check and the bind.
 - Pods that load modules carry `required-plugins.noderesource.dev/pod:
   '["modules"]'` and may not set any other `required-plugins.noderesource.dev`
   annotation (a container-scoped one would override it).
