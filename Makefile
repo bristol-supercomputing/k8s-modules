@@ -1,6 +1,7 @@
 CONTAINER_CLI ?= $(shell command -v docker >/dev/null 2>&1 && echo docker || echo podman)
 BUILD_ARGS ?=
 IMG ?= ghcr.io/bristol-supercomputing/module-controller:dev
+NRI_IMG ?= ghcr.io/bristol-supercomputing/module-nri:dev
 ENVTEST_K8S_VERSION ?= 1.36.2
 CONTROLLER_TOOLS_VERSION ?= v0.21.0
 SETUP_ENVTEST_VERSION ?= v0.24.1
@@ -9,7 +10,7 @@ CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 SETUP_ENVTEST ?= $(LOCALBIN)/setup-envtest
 export CGO_ENABLED ?= 0
 
-.PHONY: all generate manifests fmt vet build test test-envtest test-e2e helm-lint image kind-up kind-down
+.PHONY: all generate manifests fmt vet build test test-envtest test-e2e helm-lint image image-nri kind-up kind-down
 
 all: build
 
@@ -27,7 +28,7 @@ vet:
 	go vet -tags e2e ./test/e2e/...
 
 build: generate manifests fmt vet
-	go build -o $(LOCALBIN)/module-controller ./cmd/module-controller
+	go build -o $(LOCALBIN)/ ./cmd/...
 
 test:
 	go test ./api/... ./internal/... -count=1
@@ -44,6 +45,9 @@ helm-lint:
 
 image:
 	$(CONTAINER_CLI) build $(BUILD_ARGS) -t $(IMG) .
+
+image-nri:
+	$(CONTAINER_CLI) build $(BUILD_ARGS) -f Dockerfile.nri -t $(NRI_IMG) .
 
 kind-up:
 	CONTAINER_CLI=$(CONTAINER_CLI) BUILD_ARGS="$(BUILD_ARGS)" deploy/kind/setup.sh

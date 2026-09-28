@@ -1,0 +1,17 @@
+FROM docker.io/library/golang:1.26 AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY api/ api/
+COPY internal/ internal/
+COPY cmd/ cmd/
+ARG TARGETOS=linux
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w" -o /out/module-nri ./cmd/module-nri && \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w" -o /out/module-hook ./cmd/module-hook
+
+# Runs as root: the plugin reads host library files and host mount tables.
+FROM gcr.io/distroless/static
+COPY --from=build /out/module-nri /module-nri
+COPY --from=build /out/module-hook /module-hook
+ENTRYPOINT ["/module-nri"]
