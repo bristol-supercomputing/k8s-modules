@@ -40,8 +40,9 @@ Out of scope:
 - Scheduling by the new node labels.
 - Spack image pipeline and CXI driver cut-over (parent phases 4 and 5).
 
-**Known limit:** host modules need a writable `/etc` and an `ldconfig` in the
-image, because their dependencies are added to the image's ld cache. Pods with
+**Known limit:** host modules need a glibc-based image with a writable
+`/etc`, because their dependencies are added to the image's ld cache. The
+image does not need its own `ldconfig`. Pods with
 `readOnlyRootFilesystem: true` that load a host module fail with a clear
 message.
 
@@ -160,19 +161,22 @@ whenever a host Module is created or deleted. All host paths are read under
    `$ORIGIN` and `${ORIGIN}` expand to the host directory of the object being
    read. `$LIB` and `$PLATFORM` are not supported: an entry containing them is
    skipped.
-4. **Exclusions.** `libc.so.6`, `libm.so.6`, `libpthread.so.0`, `libdl.so.2`,
+4. **Path-like names.** A `DT_NEEDED` entry containing `/` (or `.`/`..`)
+   is a path to `ld.so`, not a soname. The module is not ready, because the
+   entry would otherwise become a bind destination outside `<mount>/deps`.
+5. **Exclusions.** `libc.so.6`, `libm.so.6`, `libpthread.so.0`, `libdl.so.2`,
    `librt.so.1` and any `ld-linux*` are never included or walked. Host glibc
    must never enter a container.
-5. **glibc floor.** Over the closure, take the highest `GLIBC_2.x` in any
+6. **glibc floor.** Over the closure, take the highest `GLIBC_2.x` in any
    `.gnu.version_r` entry whose library is one of the excluded glibc sonames.
    `DynamicVersionNeeds` provides these entries. Compare versions
    numerically, component by component.
-6. **Containment.** Symlinks are resolved inside `/host`. A resolved path
+7. **Containment.** Symlinks are resolved inside `/host`. A resolved path
    outside `/host`, or one that isn't a regular file, is an error, and the
    module is not ready.
-7. **Placement.** Roots and `preferHost` entries go to `lib`; everything else
+8. **Placement.** Roots and `preferHost` entries go to `lib`; everything else
    goes to `deps`. Both lists are sorted by soname.
-8. **Hash.** `closureHash` is the SHA-256 of lines of the form
+9. **Hash.** `closureHash` is the SHA-256 of lines of the form
    `lib|deps <soname> <path> <size>`, sorted, joined by `\n`.
 
 A discovery failure for one module never stops the others. The report and the
@@ -229,7 +233,11 @@ Modules are handled in descending rank, then by name.
 - **`src=pvc:<claim>/<subPath>`:**
   - The claim must be in `nri.pvcs`. Otherwise the container fails with
     `pvc claim <claim> is not mounted by module-nri; add it to nri.pvcs`.
-  - The plugin binds `<hostPath(claim)>/<subPath>` to `<mount>` with
+  - The plugin resolves `subPath` inside its own mount of the claim with
+    `fsutil.ResolveIn`. A symlink in the PV therefore resolves inside the
+    PV, and one that climbs out is an error. The result must be a
+    directory.
+  - It binds `<hostPath(claim)>/<resolved subPath>` to `<mount>` with
     `rbind,ro,nosuid,nodev,rprivate`.
 - **Hook:** if any host module was recorded, the plugin adds one
   `createContainer` hook:
@@ -249,7 +257,12 @@ At start, and whenever a claim is first used, the plugin resolves each
 1. In `/proc/self/mountinfo`, find the entry whose mount point is
    `/pvcs/<claim>`. Take its `major:minor` and `root`.
 2. In `/host/proc/1/mountinfo`, find an entry with the same `major:minor`
-   whose `root` is a prefix of ours. Prefer the longest such root. The host
+   whose `root` is a prefix of ours.
+   - First prefer mounts under our own pod's
+     `/var/lib/kubelet/pods/<uid>/`; the pod UID comes from the downward API.
+     Shared-device volumes also appear under other pods' directories, and
+     those can be unmounted at any time.
+   - Then prefer the longest root. The host
    path is that entry's mount point joined with the remainder of our root.
 
 If no entry matches, the claim is unusable, and the container fails with the
@@ -259,30 +272,41 @@ message above, prefixed with `cannot locate host path for`.
 
 The runtime runs the hook as a `createContainer` hook. That means it runs in
 the container's mount namespace, after the mounts are set up and before
-`pivot_root`.
+`pivot_root`. It runs with host-root privileges, on an image rootfs the user
+controls. So it follows two rules:
+
+- **It never executes code from the image.** `ldconfig` is a trusted,
+  statically linked binary shipped in the `module-nri` image. `install-hook`
+  copies it next to `module-hook`.
+- **Every rootfs access goes through Go's `os.Root`.** The kernel then
+  confines symlink resolution to the rootfs, with no gap between resolving a
+  path and opening it.
+
+Steps:
 
 1. Read the OCI state JSON from stdin, and read `<bundle>/config.json`. The
    rootfs is `root.path`, joined to `bundle` when relative.
-2. Resolve every path under the rootfs, with symlinks confined to the rootfs.
-   Write `<rootfs>/etc/ld.so.conf.d/zz-brics-modules.conf`. It first lists
-   the image's trusted directories that exist (`/lib64`, `/usr/lib64`,
-   `/lib`, `/usr/lib`), then one `--deps` directory per line. `ldconfig`
-   scans the trusted directories last, so without them first a library that
-   the image keeps only in `/usr/lib` would lose to the host copy (verified
-   in a spike). Multiarch directories are already listed by the image's
-   earlier `conf.d` files.
-   - If `ld.so.conf.d` is absent, create it.
+2. Write `etc/ld.so.conf.d/zz-brics-modules.conf`.
+   - First it lists the image's trusted directories that exist (`/lib64`,
+     `/usr/lib64`, `/lib`, `/usr/lib`), then one `--deps` directory per
+     line.
+   - `ldconfig` scans the trusted directories last. Without them first, a
+     library the image keeps only in `/usr/lib` would lose to the host copy
+     (verified in a spike). Multiarch directories are already listed by the
+     image's earlier `conf.d` files.
+   - Whatever the image already has at that name is removed and the file
+     recreated with `O_EXCL`, so an image symlink is never followed.
    - If `etc/ld.so.conf` has no `include ld.so.conf.d/*.conf` line, append
      one.
-   - A write error fails with
+   - A permission or read-only error fails with
      `host modules need a writable /etc in the image (readOnlyRootFilesystem is not supported): <err>`.
-3. Find `ldconfig` at `/sbin/ldconfig` or `/usr/sbin/ldconfig` in the
-   rootfs. If neither exists, fail with
-   `image has no ldconfig; host modules require a glibc-based image`.
-   Otherwise run it with the rootfs as its root, using a chroot in a child
-   process.
+   - Any other error, such as a symlink escaping the rootfs, fails with
+     `writing the image's ld config: <err>`.
+3. Run `<hookDir>/ldconfig -X -r <rootfs>`, with a 30 s timeout.
+   `ldconfig` chroots into the rootfs itself, and `-X` leaves the image's
+   library symlinks alone.
 4. glibc check, run when any `--glibc` argument was given:
-   - Find `libc.so.6` in the rootfs by searching `/lib64`, `/usr/lib64`,
+   - Open `libc.so.6` through the root, searching `/lib64`, `/usr/lib64`,
      `/lib/<multiarch>`, `/usr/lib/<multiarch>`, `/lib` and `/usr/lib`, in
      that order.
    - From its `DynamicVersions`, take the highest `GLIBC_2.x` it defines.
@@ -305,8 +329,12 @@ The hook writes errors to stderr and exits 1, which fails the container.
   - **CREATE:** if any `resolved.*` annotation is present, `containers` must
     equal the joined container names, and `required-plugins.noderesource.dev/pod` must
     equal `["modules"]`.
-  - **UPDATE:** both keys join the immutable set. Their matchCondition also
-    covers them.
+  - **CREATE:** if any `resolved.*` annotation is present, no other
+    `required-plugins.noderesource.dev*` key may appear. NRI's validator
+    prefers the `/container.<name>` key and the bare key over `/pod`, so
+    either one would let the pod start without the plugin.
+  - **UPDATE:** both keys, and every `required-plugins.noderesource.dev*`
+    key, join the immutable set. Their matchCondition also covers them.
 - **New ValidatingAdmissionPolicy `module-reports.modules.brics.ac.uk`:**
   - It matches `modulenodereports` and `modulenodereports/status` on CREATE
     and UPDATE.
