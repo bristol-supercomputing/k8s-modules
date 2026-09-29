@@ -11,21 +11,39 @@ spec:
     resourceRules:
     - {apiGroups: [""], apiVersions: [v1], operations: [CREATE], resources: [pods]}
   matchConditions:
-  - name: has-module-annotations
+  - name: has-module-fields
     expression: >-
-      has(object.metadata.annotations) && object.metadata.annotations.exists(k,
-        k == 'modules.isambard.ac.uk/load' || k.startsWith('resolved.modules.isambard.ac.uk/'))
+      (has(object.metadata.annotations) && object.metadata.annotations.exists(k,
+        k == 'modules.isambard.ac.uk/load' || k.startsWith('resolved.modules.isambard.ac.uk/'))) ||
+      object.spec.containers.exists(c, has(c.resources) && has(c.resources.limits) &&
+        c.resources.limits.exists(k, k.startsWith('modules.isambard.ac.uk/') || k.startsWith('family.modules.isambard.ac.uk/')))
   variables:
   - name: anns
-    expression: "object.metadata.annotations"
+    expression: "has(object.metadata.annotations) ? object.metadata.annotations : {}"
+  # An invalid load-containers makes load select no container, so the
+  # mutating policy applied nothing; leave the error to the pods policy.
+  - name: loadContainersValid
+    expression: >-
+      !('modules.isambard.ac.uk/load-containers' in variables.anns) ||
+      (variables.anns['modules.isambard.ac.uk/load-containers'].split(',').map(s, s.trim()).filter(s, s != '').size() > 0 &&
+       variables.anns['modules.isambard.ac.uk/load-containers'].split(',').map(s, s.trim()).filter(s, s != '').all(n,
+         object.spec.containers.exists(c, c.name == n)))
   - name: requested
-    expression: "'modules.isambard.ac.uk/load' in variables.anns ? variables.anns['modules.isambard.ac.uk/load'].split(',').map(s, s.trim()).filter(s, s != '') : []"
+    expression: "variables.loadContainersValid && 'modules.isambard.ac.uk/load' in variables.anns ? variables.anns['modules.isambard.ac.uk/load'].split(',').map(s, s.trim()).filter(s, s != '') : []"
+  - name: limitKeys
+    expression: >-
+      object.spec.containers.map(c, has(c.resources) && has(c.resources.limits) ?
+        c.resources.limits.filter(k, k.startsWith('modules.isambard.ac.uk/') || k.startsWith('family.modules.isambard.ac.uk/')).join(',') : '')
+      .filter(s, s != '').join(',').split(',').filter(s, s != '')
   - name: isDefault
     expression: "has(params.metadata.labels) && 'modules.isambard.ac.uk/default' in params.metadata.labels && params.metadata.labels['modules.isambard.ac.uk/default'] == 'true'"
+  - name: isRequested
+    expression: >-
+      params.metadata.name in variables.requested || (params.spec.family in variables.requested && variables.isDefault) ||
+      ('modules.isambard.ac.uk/' + params.metadata.name) in variables.limitKeys ||
+      (variables.isDefault && ('family.modules.isambard.ac.uk/' + params.spec.family) in variables.limitKeys)
   - name: familyKey
     expression: "'resolved.modules.isambard.ac.uk/' + params.spec.family"
-  - name: isRequested
-    expression: "params.metadata.name in variables.requested || (params.spec.family in variables.requested && variables.isDefault)"
   - name: references
     expression: >-
       variables.isRequested ||

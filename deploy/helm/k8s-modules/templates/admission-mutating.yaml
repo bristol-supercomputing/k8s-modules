@@ -11,22 +11,46 @@ spec:
     resourceRules:
     - {apiGroups: [""], apiVersions: [v1], operations: [CREATE], resources: [pods]}
   matchConditions:
-  - name: has-load
-    expression: "has(object.metadata.annotations) && 'modules.isambard.ac.uk/load' in object.metadata.annotations"
+  - name: requests-modules
+    expression: >-
+      (has(object.metadata.annotations) && 'modules.isambard.ac.uk/load' in object.metadata.annotations) ||
+      object.spec.containers.exists(c, has(c.resources) && has(c.resources.limits) &&
+        c.resources.limits.exists(k, k.startsWith('modules.isambard.ac.uk/') || k.startsWith('family.modules.isambard.ac.uk/')))
   variables:
+  - name: anns
+    expression: "has(object.metadata.annotations) ? object.metadata.annotations : {}"
   - name: requested
-    expression: "object.metadata.annotations['modules.isambard.ac.uk/load'].split(',').map(s, s.trim()).filter(s, s != '')"
+    expression: "'modules.isambard.ac.uk/load' in variables.anns ? variables.anns['modules.isambard.ac.uk/load'].split(',').map(s, s.trim()).filter(s, s != '') : []"
+  - name: loadContainers
+    expression: >-
+      'modules.isambard.ac.uk/load-containers' in variables.anns ?
+        variables.anns['modules.isambard.ac.uk/load-containers'].split(',').map(s, s.trim()).filter(s, s != '') :
+        object.spec.containers.map(c, c.name)
   - name: isDefault
     expression: "has(params.metadata.labels) && 'modules.isambard.ac.uk/default' in params.metadata.labels && params.metadata.labels['modules.isambard.ac.uk/default'] == 'true'"
-  - name: isRequested
-    expression: "params.metadata.name in variables.requested || (params.spec.family in variables.requested && variables.isDefault)"
+  - name: exactKey
+    expression: "'modules.isambard.ac.uk/' + params.metadata.name"
+  - name: familyKey
+    expression: "'family.modules.isambard.ac.uk/' + params.spec.family"
+  # Containers that request this Module through load (possibly narrowed by
+  # load-containers) or through a container limit.
+  - name: byLoad
+    expression: >-
+      params.metadata.name in variables.requested || (params.spec.family in variables.requested && variables.isDefault) ?
+        object.spec.containers.map(c, c.name).filter(n, n in variables.loadContainers) : []
+  - name: byLimit
+    expression: >-
+      object.spec.containers.filter(c, has(c.resources) && has(c.resources.limits) &&
+        (variables.exactKey in c.resources.limits || (variables.isDefault && variables.familyKey in c.resources.limits))).map(c, c.name)
+  - name: targets
+    expression: "variables.byLoad + variables.byLimit"
   - name: nsAllowed
     expression: >-
       !has(params.spec.access) || !has(params.spec.access.matchLabels) ||
       params.spec.access.matchLabels.all(k, has(namespaceObject.metadata.labels) &&
         k in namespaceObject.metadata.labels && namespaceObject.metadata.labels[k] == params.spec.access.matchLabels[k])
   - name: applies
-    expression: "has(params.status) && has(params.status.resolved) && variables.isRequested && variables.nsAllowed"
+    expression: "has(params.status) && has(params.status.resolved) && variables.targets.size() > 0 && variables.nsAllowed"
   - name: volumes
     expression: "variables.applies && has(params.status.resolved.volumes) ? params.status.resolved.volumes : []"
   - name: mounts
@@ -46,10 +70,28 @@ spec:
               name: v.name,
               image: Object.spec.volumes.image{reference: v.reference, pullPolicy: "IfNotPresent"}
             }),
-            containers: object.spec.containers.map(c, Object.spec.containers{
+            containers: object.spec.containers.filter(c, c.name in variables.targets).map(c, Object.spec.containers{
               name: c.name,
               volumeMounts: variables.mounts.map(m, Object.spec.containers.volumeMounts{name: m.name, mountPath: m.mountPath, readOnly: true}),
               env: variables.env.filter(e, !has(c.env) || !c.env.exists(ce, ce.name == e.name)).map(e, Object.spec.containers.env{name: e.name, value: e.value})
+            })
+          }
+        }
+  # load becomes an exact limit on each selected container, so the
+  # scheduler allocates the Module's device to it. Quantities are plain
+  # strings: quantity() is rejected by the apply.
+  - patchType: ApplyConfiguration
+    applyConfiguration:
+      expression: >-
+        !variables.applies || variables.byLoad.size() == 0 ? Object{} :
+        Object{
+          spec: Object.spec{
+            containers: variables.byLoad.map(n, Object.spec.containers{
+              name: n,
+              resources: Object.spec.containers.resources{
+                limits: {variables.exactKey: '1'},
+                requests: {variables.exactKey: '1'}
+              }
             })
           }
         }
@@ -59,7 +101,6 @@ spec:
         !variables.applies ? Object{} :
         Object{
           metadata: Object.metadata{annotations: {
-            'modules.isambard.ac.uk/containers': object.spec.containers.map(c, c.name).join(','),
             'required-plugins.noderesource.dev/pod': '["modules"]'
           }}
         }

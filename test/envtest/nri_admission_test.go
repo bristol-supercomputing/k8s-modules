@@ -20,10 +20,12 @@ func TestAdmissionNRIAnnotations(t *testing.T) {
 	m = waitResolved(t, m.Name)
 	ns := newNamespace(t, nil)
 	p := admit(t, func() *corev1.Pod {
-		return newPod(ns, m.Name, corev1.Container{Name: "a", Image: "busybox"}, corev1.Container{Name: "b", Image: "busybox"})
-	}, hasAnnotations(map[string]string{v1.AnnotationContainers: "a,b", v1.AnnotationRequiredPlugins: v1.RequiredPluginsValue}))
+		p := newPod(ns, m.Name, corev1.Container{Name: "a", Image: "busybox"}, corev1.Container{Name: "b", Image: "busybox"})
+		p.Annotations[v1.AnnotationLoadContainers] = "a"
+		return p
+	}, hasAnnotations(map[string]string{v1.AnnotationRequiredPlugins: v1.RequiredPluginsValue}))
 
-	for key, value := range map[string]string{v1.AnnotationContainers: "a", v1.AnnotationRequiredPlugins: "[]"} {
+	for key, value := range map[string]string{v1.AnnotationLoadContainers: "a,b", v1.AnnotationRequiredPlugins: "[]"} {
 		cur := &corev1.Pod{}
 		if err := k8s.Get(ctx, client.ObjectKeyFromObject(p), cur); err != nil {
 			t.Fatal(err)
@@ -36,7 +38,7 @@ func TestAdmissionNRIAnnotations(t *testing.T) {
 
 	plain := newPod(ns, "")
 	create(t, plain)
-	if _, ok := plain.Annotations[v1.AnnotationContainers]; ok {
+	if _, ok := plain.Annotations[v1.AnnotationRequiredPlugins]; ok {
 		t.Error("a pod loading no modules must not get NRI annotations")
 	}
 }
@@ -58,9 +60,8 @@ func TestAdmissionNRIAnnotationsRequired(t *testing.T) {
 			return p
 		}
 	}
-	reject(t, written(nil), "modules.isambard.ac.uk/containers must list the pod's containers")
-	reject(t, written(map[string]string{v1.AnnotationContainers: "main"}), "required-plugins.noderesource.dev/pod must be")
-	admit(t, written(map[string]string{v1.AnnotationContainers: "main", v1.AnnotationRequiredPlugins: v1.RequiredPluginsValue}),
+	reject(t, written(nil), "required-plugins.noderesource.dev/pod must be")
+	admit(t, written(map[string]string{v1.AnnotationRequiredPlugins: v1.RequiredPluginsValue}),
 		hasAnnotations(m.Status.Resolved.Annotations))
 }
 

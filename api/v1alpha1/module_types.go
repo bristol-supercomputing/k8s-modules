@@ -13,7 +13,6 @@ const (
 	MountRoot        = "/opt/modules"
 	EnvLDLibraryPath = "LD_LIBRARY_PATH"
 
-	AnnotationContainers      = "modules.isambard.ac.uk/containers"
 	AnnotationRequiredPlugins = "required-plugins.noderesource.dev/pod"
 	RequiredPluginsValue      = `["modules"]`
 	NRIPluginName             = "modules"

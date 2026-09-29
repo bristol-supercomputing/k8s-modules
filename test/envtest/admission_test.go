@@ -210,7 +210,7 @@ func TestAdmissionForgedAnnotation(t *testing.T) {
 		p := newPod(ns, "")
 		p.Annotations[key] = forged
 		return p
-	}, "requires "+key, "modules.isambard.ac.uk/containers must list the pod's containers")
+	}, "requires "+key, "required-plugins.noderesource.dev/pod must be")
 
 	// Loading the module overwrites the forged value with the real one.
 	admit(t, func() *corev1.Pod {
