@@ -1,7 +1,4 @@
-// Package nri is the module system's NRI plugin: it applies the modules a
-// pod's resolved.modules.isambard.ac.uk annotations name when its containers
-// are created.
-package nri
+package resolve
 
 import (
 	"fmt"
@@ -9,7 +6,7 @@ import (
 	"strings"
 )
 
-// ModuleValue is one parsed resolved.modules.isambard.ac.uk/<family> value.
+// ModuleValue is one parsed resolved.modules.isambard.ac.uk/<family> value, the inverse of AnnotationValue.
 type ModuleValue struct {
 	Name  string
 	Rank  int

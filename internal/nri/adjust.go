@@ -11,6 +11,7 @@ import (
 
 	v1 "github.com/isambard-sc/k8s-modules/api/v1alpha1"
 	"github.com/isambard-sc/k8s-modules/internal/discovery"
+	"github.com/isambard-sc/k8s-modules/internal/resolve"
 )
 
 // Catalogue looks up Modules, normally from an informer cache.
@@ -60,7 +61,7 @@ func (a *Adjuster) Adjust(pod *api.PodSandbox, ctr *api.Container) (*api.Contain
 	}
 	sort.Strings(keys)
 
-	mods := make([]ModuleValue, 0, len(keys))
+	mods := make([]resolve.ModuleValue, 0, len(keys))
 	for _, k := range keys {
 		v := anns[k]
 		name, _, _ := strings.Cut(v, ";")
@@ -68,7 +69,7 @@ func (a *Adjuster) Adjust(pod *api.PodSandbox, ctr *api.Container) (*api.Contain
 		if !ok || m.Status.Resolved == nil || m.Status.Resolved.Annotations[k] != v {
 			return nil, fmt.Errorf("module annotation %s=%s does not match the Module catalogue (not found, not resolved, or changed); the pod must be recreated", k, v)
 		}
-		mv, err := ParseValue(v)
+		mv, err := resolve.ParseValue(v)
 		if err != nil {
 			return nil, err
 		}

@@ -120,3 +120,50 @@ func TestAnnotationKeys(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+func TestDeviceName(t *testing.T) {
+	if got := DeviceName("libfabric-host"); got != "libfabric-host" {
+		t.Errorf("DeviceName(libfabric-host) = %q", got)
+	}
+	a, b := DeviceName("nccl-2.29.2"), DeviceName("nccl-2-29.2")
+	if a == b {
+		t.Errorf("lossy names must differ: %q", a)
+	}
+	if !strings.HasPrefix(a, "nccl-2-29-2-") || len(a) != len("nccl-2-29-2-")+8 {
+		t.Errorf("DeviceName(nccl-2.29.2) = %q", a)
+	}
+	long := strings.Repeat("a", 30) + "." + strings.Repeat("b", 32)
+	if got := DeviceName(long); len(validation.IsDNS1123Label(got)) != 0 {
+		t.Errorf("DeviceName(%q) = %q is not a DNS label", long, got)
+	}
+}
+
+func TestMarkerKey(t *testing.T) {
+	if got := MarkerKey("libfabric-host"); got != "BRICS_MODULE_LIBFABRIC_HOST" {
+		t.Errorf("MarkerKey(libfabric-host) = %q", got)
+	}
+	a, b := MarkerKey("nccl-2.29.2"), MarkerKey("nccl-2-29.2")
+	if a == b || !strings.HasPrefix(a, "BRICS_MODULE_NCCL_2_29_2_") || len(a) != len("BRICS_MODULE_NCCL_2_29_2_")+8 {
+		t.Errorf("MarkerKey: %q, %q", a, b)
+	}
+	for _, k := range []string{a, b} {
+		for _, r := range k {
+			if !(r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_') {
+				t.Fatalf("MarkerKey %q has %q", k, r)
+			}
+		}
+	}
+}
+
+func TestClassAndResourceNames(t *testing.T) {
+	for got, want := range map[string]string{
+		DeviceClassName("nccl-2.29.2"): "nccl-2.29.2.modules.isambard.ac.uk",
+		FamilyClassName("nccl"):        "nccl.family.modules.isambard.ac.uk",
+		ResourceName("nccl-2.29.2"):    "modules.isambard.ac.uk/nccl-2.29.2",
+		FamilyResourceName("nccl"):     "family.modules.isambard.ac.uk/nccl",
+	} {
+		if got != want {
+			t.Errorf("got %q, want %q", got, want)
+		}
+	}
+}

@@ -18,21 +18,62 @@ func MountPath(m *v1.Module) string {
 }
 
 // VolumeName turns a Module name into a pod volume name (a DNS label).
-func VolumeName(moduleName string) string {
-	n := "mod-" + strings.Map(func(r rune) rune {
+func VolumeName(moduleName string) string { return dnsLabel("mod-", moduleName) }
+
+// DeviceName turns a Module name into its DRA device name (a DNS label).
+func DeviceName(moduleName string) string { return dnsLabel("", moduleName) }
+
+// dnsLabel prefixes a sanitised name. Sanitising is lossy (nccl-2.29.2 and
+// nccl-2-29.2 both become nccl-2-29-2), so any changed or overlong name gets
+// a hash suffix.
+func dnsLabel(prefix, name string) string {
+	n := prefix + strings.Map(func(r rune) rune {
 		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
 			return r
 		}
 		return '-'
-	}, strings.ToLower(moduleName))
-	// Sanitising is lossy (nccl-2.29.2 and nccl-2-29.2 both become
-	// mod-nccl-2-29-2), so any changed or overlong name gets a hash suffix.
-	if len(n) <= 63 && n == "mod-"+moduleName {
+	}, strings.ToLower(name))
+	if len(n) <= 63 && n == prefix+name {
 		return n
 	}
-	sum := sha256.Sum256([]byte(moduleName))
-	return n[:min(len(n), 54)] + "-" + hex.EncodeToString(sum[:])[:8]
+	return n[:min(len(n), 54)] + "-" + shortHash(name)
 }
+
+func shortHash(s string) string {
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:])[:8]
+}
+
+// MarkerKey is the env var the DRA driver sets for a module. '-' maps
+// reversibly to '_' (Module names have no '_'); anything else, such as a
+// '.', is lossy and adds a hash suffix.
+func MarkerKey(moduleName string) string {
+	var b strings.Builder
+	lossy := false
+	for _, r := range moduleName {
+		switch {
+		case r >= 'a' && r <= 'z':
+			b.WriteRune(r - 'a' + 'A')
+		case r >= '0' && r <= '9':
+			b.WriteRune(r)
+		case r == '-':
+			b.WriteByte('_')
+		default:
+			lossy = true
+			b.WriteByte('_')
+		}
+	}
+	k := v1.EnvMarkerPrefix + b.String()
+	if lossy {
+		k += "_" + strings.ToUpper(shortHash(moduleName))
+	}
+	return k
+}
+
+func DeviceClassName(moduleName string) string { return moduleName + v1.DeviceClassSuffix }
+func FamilyClassName(family string) string     { return family + v1.FamilyClassSuffix }
+func ResourceName(moduleName string) string    { return v1.ResourcePrefix + moduleName }
+func FamilyResourceName(family string) string  { return v1.FamilyResourcePrefix + family }
 
 func ResolvedAnnotationKey(family string) string { return v1.AnnotationResolvedPrefix + family }
 

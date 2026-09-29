@@ -19,6 +19,26 @@ const (
 	NRIPluginName             = "modules"
 	LabelHostPrefix           = "modules.isambard.ac.uk/host-"
 
+	AnnotationLoadContainers = "modules.isambard.ac.uk/load-containers"
+
+	// DRA: every Module is a shareable device of this driver, requested as
+	// ResourcePrefix+<module> or FamilyResourcePrefix+<family>.
+	DriverName           = "modules.isambard.ac.uk"
+	ResourcePrefix       = "modules.isambard.ac.uk/"
+	FamilyResourcePrefix = "family.modules.isambard.ac.uk/"
+	DeviceClassSuffix    = ".modules.isambard.ac.uk"
+	FamilyClassSuffix    = ".family.modules.isambard.ac.uk"
+	LabelManaged         = "modules.isambard.ac.uk/managed"
+	AttrModule           = "module"
+	AttrFamily           = "family"
+	AttrDefault          = "default"
+
+	// EnvMarkerPrefix starts the env var the DRA driver's CDI edits set for
+	// each module a container gets; its value is the module's resolved
+	// annotation value. EnvModules lists them for the workload.
+	EnvMarkerPrefix = "BRICS_MODULE_"
+	EnvModules      = "BRICS_MODULES"
+
 	ConditionResolved     = "Resolved"
 	ConditionConflictFree = "ConflictFree"
 )
