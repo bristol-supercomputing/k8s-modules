@@ -1,0 +1,22 @@
+apiVersion: modules.brics.ac.uk/v1alpha1
+kind: Module
+metadata:
+  name: nccl-2.29.2
+  labels:
+    modules.brics.ac.uk/family: nccl
+    modules.brics.ac.uk/default: "true"
+spec:
+  family: nccl
+  version: 2.29.2
+  source:
+    image:
+      # Built from Dockerfile in this directory; a tag is not accepted, the
+      # reference must end in @sha256:<digest> (see the Dockerfile's build command).
+      reference: ghcr.io/isambard-sc/modules/nccl@sha256:<64 hex digits>
+  env:
+    prependPath:
+      LD_LIBRARY_PATH: [lib]
+  # nccl on its own falls back to slow TCP sockets; force the RDMA plugin to
+  # come along. Same dependsOn whichever aws-ofi-nccl-1.20.0 variant
+  # (../../aws-ofi-nccl/pvc/ or ../../aws-ofi-nccl/image/) is actually applied.
+  dependsOn: [aws-ofi-nccl-1.20.0]

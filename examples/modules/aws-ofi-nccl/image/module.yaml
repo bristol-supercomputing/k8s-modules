@@ -1,0 +1,44 @@
+apiVersion: modules.brics.ac.uk/v1alpha1
+kind: Module
+metadata:
+  name: aws-ofi-nccl-1.20.0
+  labels:
+    modules.brics.ac.uk/family: aws-ofi-nccl
+    modules.brics.ac.uk/default: "true"
+spec:
+  family: aws-ofi-nccl
+  version: 1.20.0
+  source:
+    image:
+      # Built from Dockerfile in this directory; a tag is not accepted, the
+      # reference must end in @sha256:<digest> (see the Dockerfile's build command).
+      reference: ghcr.io/isambard-sc/modules/aws-ofi-nccl@sha256:c0dee30103ddfafc6e6057f1df2e5fc60a93564c70cbb1554fd3e1bb16950716
+  # Built against a copy of the node's libfabric, but still dynamically
+  # links against it at runtime — dependsOn is unchanged from ../pvc/.
+  dependsOn: [libfabric-host]
+  env:
+    prependPath:
+      # deps/ (gdrcopy) after lib/, so this module's own libraries win.
+      LD_LIBRARY_PATH: [lib, deps]
+    set:
+      NCCL_NET: "AWS Libfabric"
+      NCCL_CROSS_NIC: "1"
+      NCCL_NET_GDR_LEVEL: PHB
+      NCCL_SOCKET_IFNAME: eth0
+      NCCL_MIN_NCHANNELS: "4"
+      NCCL_GDRCOPY_ENABLE: "1"
+      NCCL_NET_FORCE_FLUSH: "0"
+      FI_MR_CACHE_MONITOR: kdreg2
+      FI_CXI_DISABLE_HOST_REGISTER: "1"
+      # Drop this (and the Dockerfile's gdrcopy build) if not bundling it.
+      FI_HMEM_CUDA_USE_GDRCOPY: "1"
+      # App-dependent (see the NCCL guide's env var reference); the user's
+      # own env wins over these defaults.
+      FI_CXI_DEFAULT_CQ_SIZE: "131072"
+      FI_CXI_DEFAULT_TX_SIZE: "2048"
+      FI_CXI_RDZV_PROTO: alt_read
+      FI_CXI_RDZV_THRESHOLD: "0"
+      FI_CXI_RDZV_GET_MIN: "0"
+      FI_CXI_RDZV_EAGER_SIZE: "0"
+      FI_CXI_DISABLE_NON_INJECT_MSG_IDC: "1"
+      FI_CXI_RX_MATCH_MODE: hybrid

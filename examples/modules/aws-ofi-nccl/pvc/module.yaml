@@ -1,0 +1,58 @@
+apiVersion: modules.brics.ac.uk/v1alpha1
+kind: Module
+metadata:
+  name: aws-ofi-nccl-1.20.0
+  labels:
+    modules.brics.ac.uk/family: aws-ofi-nccl
+    modules.brics.ac.uk/default: "true"
+spec:
+  family: aws-ofi-nccl
+  version: 1.20.0
+  source:
+    pvc:
+      claimName: spack-apps
+      # Unlike nccl, the raw per-build install dir alone isn't enough: its
+      # RPATH-linked Spack deps (hwloc, libpciaccess, libxml2, gcc-runtime,
+      # xz, libiconv) live in separate hash-suffixed directories elsewhere
+      # in the tree, invisible once only this one subPath is mounted (RPATH
+      # misses fall through to LD_LIBRARY_PATH, but only if something's
+      # actually there — see writing-modules.md's Spack packaging note).
+      # Point this at a merged Spack view instead, created once with:
+      #   spack view symlink -i /projects/public/alma/views/aws-ofi-nccl-1.20.0 aws-ofi-nccl@1.20.0
+      # which symlinks aws-ofi-nccl and its Spack deps into one lib/ dir.
+      subPath: linux-neoverse_v2
+  # Only needs the node's libfabric for Slingshot 11 RDMA. Deliberately does
+  # NOT dependsOn nccl-2.29.2: it's usable standalone against a pod's own
+  # NCCL (e.g. one bundled in an NGC image). nccl-2.29.2 depends on this
+  # module instead, forcing the plugin to always come along with it.
+  dependsOn: [libfabric-host]
+  env:
+    prependPath:
+      LD_LIBRARY_PATH:
+      - aws-ofi-nccl-1.20.0-nbxiitauqyskplmjlcgedzopfkvfauvb/lib
+      - hwloc-2.12.2-f4c6cazv2bctbowfmiv5mvd4vrgzvp4i/lib
+      - libpciaccess-0.17-3yrcyynrfeclvegjwnkfjprpgab4q36f/lib
+      - libxml2-2.13.5-mp3ygv2var2xdqa5wbqnujlk62dwield/lib
+      - xz-5.6.3-23dshkvpro5gy2emerm6ylvpbek7agzt/lib
+      - libiconv-1.18-2wrqryt3vnvh6te2axjdrrn7pbtuxq2a/lib
+    set:
+      NCCL_NET: "AWS Libfabric"
+      NCCL_CROSS_NIC: "1"
+      NCCL_NET_GDR_LEVEL: PHB
+      NCCL_SOCKET_IFNAME: eth0
+      NCCL_MIN_NCHANNELS: "4"
+      NCCL_GDRCOPY_ENABLE: "1"
+      NCCL_NET_FORCE_FLUSH: "0"
+      FI_MR_CACHE_MONITOR: kdreg2
+      FI_CXI_DISABLE_HOST_REGISTER: "1"
+      FI_HMEM_CUDA_USE_GDRCOPY: "1"
+      # App-dependent (see the NCCL guide's env var reference); the user's
+      # own env wins over these defaults.
+      FI_CXI_DEFAULT_CQ_SIZE: "131072"
+      FI_CXI_DEFAULT_TX_SIZE: "2048"
+      FI_CXI_RDZV_PROTO: alt_read
+      FI_CXI_RDZV_THRESHOLD: "0"
+      FI_CXI_RDZV_GET_MIN: "0"
+      FI_CXI_RDZV_EAGER_SIZE: "0"
+      FI_CXI_DISABLE_NON_INJECT_MSG_IDC: "1"
+      FI_CXI_RX_MATCH_MODE: hybrid

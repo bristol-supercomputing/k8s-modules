@@ -1,0 +1,24 @@
+apiVersion: modules.brics.ac.uk/v1alpha1
+kind: Module
+metadata:
+  name: libfabric-host          # convention: version "host"
+  labels:
+    modules.brics.ac.uk/family: libfabric
+    modules.brics.ac.uk/default: "true"
+spec:
+  family: libfabric
+  version: host
+  source:
+    host:
+      discover:
+        # Sonames, not paths: the node's own Cray libfabric, the Cassini
+        # (Slingshot 11 NIC) driver.
+        roots: [libfabric.so.1, libcxi.so.1]
+      # On AlmaLinux, this closure has been observed to pull in libjson-c.so.5
+      # (via libcurl); uncomment if the image's own libjson-c turns out to be
+      # incompatible with the host's libfabric build. Leave unset otherwise
+      # (the image's copy wins).
+      # preferHost: [libjson-c.so.5]
+  env:
+    set:
+      CXIP_SKIP_AMA_CHECK: "1"

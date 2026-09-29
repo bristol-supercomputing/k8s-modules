@@ -7,7 +7,7 @@ image:
 imagePullSecrets: []
 modulesNamespace: module-system
 registryAllowlist:
-  - registry.isambard/modules/
+  - ghcr.io/isambard-sc/modules/
 envPrefixAllowlist: [NCCL_, FI_, CXIP_, UCX_, OMPI_]
 controller:
   replicas: 1

@@ -1,0 +1,26 @@
+apiVersion: modules.brics.ac.uk/v1alpha1
+kind: Module
+metadata:
+  name: nccl-2.29.2
+  labels:
+    modules.brics.ac.uk/family: nccl
+    modules.brics.ac.uk/default: "true"
+spec:
+  family: nccl
+  version: 2.29.2
+  source:
+    pvc:
+      claimName: spack-apps
+      # The hash suffix is whatever this specific Spack build resolved to;
+      # look it up with `spack find -p nccl@2.29.2-1` and adjust. nccl has
+      # no other runtime deps of its own, so (unlike aws-ofi-nccl) the raw
+      # per-build install directory is enough on its own — no merged view
+      # needed.
+      subPath: linux-neoverse_v2/nccl-2.29.2-1-jz52iy6vtm3nppl3oizqttp2vm3svisa
+  env:
+    prependPath:
+      LD_LIBRARY_PATH: [lib]
+  # nccl on its own falls back to slow TCP sockets; force the RDMA plugin to
+  # come along. See ../../aws-ofi-nccl/pvc/module.yaml for why the
+  # dependency only runs in this direction.
+  dependsOn: [aws-ofi-nccl-1.20.0]

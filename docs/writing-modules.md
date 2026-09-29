@@ -123,18 +123,18 @@ COPY include/ /include/
 ```
 
 Build it for every node architecture, push it to a registry in the
-cluster's `registryAllowlist` (default `registry.isambard/modules/`), and
+cluster's `registryAllowlist` (default `ghcr.io/isambard-sc/modules/`), and
 record the digest:
 
 ```bash
 # podman
-podman build --platform linux/arm64 -t registry.isambard/modules/nccl:2.29.2 .
-podman push --digestfile digest registry.isambard/modules/nccl:2.29.2
+podman build --platform linux/arm64 -t ghcr.io/isambard-sc/modules/nccl:2.29.2 .
+podman push --digestfile digest ghcr.io/isambard-sc/modules/nccl:2.29.2
 cat digest    # sha256:…
 
 # or docker buildx, multi-arch
 docker buildx build --platform linux/amd64,linux/arm64 --push \
-  --metadata-file meta.json -t registry.isambard/modules/nccl:2.29.2 .
+  --metadata-file meta.json -t ghcr.io/isambard-sc/modules/nccl:2.29.2 .
 jq -r '."containerimage.digest"' meta.json
 ```
 
@@ -154,7 +154,7 @@ spec:
   source:
     image:
       # A tag is not accepted: the reference must end in @sha256:<digest>.
-      reference: registry.isambard/modules/nccl@sha256:<64 hex digits>
+      reference: ghcr.io/isambard-sc/modules/nccl@sha256:<64 hex digits>
   env:
     prependPath:
       LD_LIBRARY_PATH: [lib]
@@ -176,7 +176,7 @@ spec:
   version: 1.18.0
   source:
     image:
-      reference: registry.isambard/modules/aws-ofi-nccl@sha256:<digest>
+      reference: ghcr.io/isambard-sc/modules/aws-ofi-nccl@sha256:<digest>
   dependsOn: [nccl-2.29.2, libfabric-host]
   env:
     prependPath:
