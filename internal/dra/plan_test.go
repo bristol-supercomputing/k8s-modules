@@ -2,6 +2,7 @@ package dra
 
 import (
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -42,7 +43,7 @@ func claimAndPod(c fakeCatalogue, reqs ...req) (*resourceapi.ResourceClaim, *cor
 	return claim, pod
 }
 
-func itoa(i int) string { return string(rune('0' + i)) }
+func itoa(i int) string { return strconv.Itoa(i) }
 
 func planner(c fakeCatalogue, h fakeHosts) *Planner {
 	return &Planner{Catalogue: c, Hosts: h, PVCs: fakePVCs{"spack-apps": "/var/lib/pv"}, NodeName: "n1", HookPath: "/opt/brics-modules/bin/module-hook"}
@@ -213,5 +214,31 @@ func TestPlanIgnoresOtherDrivers(t *testing.T) {
 	}
 	if _, ok := out["gpu"]; ok {
 		t.Error("other drivers' requests must not be planned")
+	}
+}
+
+// An extended-resource limit above 1 allocates several devices under one
+// request name; the request must keep its edits, without duplicates.
+func TestPlanDuplicateRequestName(t *testing.T) {
+	c := catalogue(t, withLib(mod("nccl", "2", img)))
+	claim, pod := claimAndPod(c, req{"main", resolve.ResourceName("nccl-2"), "nccl-2"})
+	claim.Status.Allocation.Devices.Results = append(claim.Status.Allocation.Devices.Results, claim.Status.Allocation.Devices.Results[0])
+	out, err := planner(c, nil).Plan(claim, pod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := out["container-0-request-0"]
+	if e == nil {
+		t.Fatalf("request lost its edits: %+v", out)
+	}
+	if len(e.Env) != 1 {
+		t.Errorf("env = %v", e.Env)
+	}
+	seen := map[string]bool{}
+	for _, m := range e.Mounts {
+		if seen[m.ContainerPath] {
+			t.Errorf("duplicate mount %s", m.ContainerPath)
+		}
+		seen[m.ContainerPath] = true
 	}
 }

@@ -3,6 +3,7 @@ package dra
 import (
 	"fmt"
 	"path"
+	"slices"
 	"sort"
 	"strings"
 
@@ -95,7 +96,11 @@ func (p *Planner) Plan(claim *resourceapi.ResourceClaim, pod *corev1.Pod) (map[s
 				return nil, fmt.Errorf("default for family %s changed from %s to %s after admission; recreate the pod", fam, admitted, m.Name)
 			}
 		}
-		requests[mp.container] = append(requests[mp.container], r.Request)
+		// A request with count > 1 yields several results under one name;
+		// record the name once so it keeps its edits.
+		if !slices.Contains(requests[mp.container], r.Request) {
+			requests[mp.container] = append(requests[mp.container], r.Request)
+		}
 		modules[mp.container] = append(modules[mp.container], m)
 	}
 
