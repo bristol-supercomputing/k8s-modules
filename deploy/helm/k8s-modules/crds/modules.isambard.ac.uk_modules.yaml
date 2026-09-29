@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.21.0
-  name: modules.modules.brics.ac.uk
+  name: modules.modules.isambard.ac.uk
 spec:
-  group: modules.brics.ac.uk
+  group: modules.isambard.ac.uk
   names:
     kind: Module
     listKind: ModuleList

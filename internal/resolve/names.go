@@ -38,7 +38,7 @@ func ResolvedAnnotationKey(family string) string { return v1.AnnotationResolvedP
 
 func EnvAnnotationKey(name string) string { return v1.AnnotationEnvPrefix + name }
 
-// AnnotationValue is the canonical resolved.modules.brics.ac.uk/<family> value.
+// AnnotationValue is the canonical resolved.modules.isambard.ac.uk/<family> value.
 func AnnotationValue(m *v1.Module, rank int) string {
 	mount := MountPath(m)
 	parts := []string{m.Name, "rank=" + strconv.Itoa(rank)}

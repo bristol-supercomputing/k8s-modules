@@ -42,8 +42,8 @@ func TestResolveSingle(t *testing.T) {
 		Mounts:  []v1.ResolvedMount{{Name: VolumeName("nccl-2.29.2"), MountPath: "/opt/modules/nccl/2.29.2"}},
 		Env:     []v1.ResolvedEnvVar{{Name: "NCCL_NET", Value: "AWS Libfabric"}},
 		Annotations: map[string]string{
-			"resolved.modules.brics.ac.uk/nccl": "nccl-2.29.2;rank=10;src=image;mount=/opt/modules/nccl/2.29.2;lib=/opt/modules/nccl/2.29.2/lib",
-			"env.modules.brics.ac.uk/NCCL_NET":  "AWS Libfabric",
+			"resolved.modules.isambard.ac.uk/nccl": "nccl-2.29.2;rank=10;src=image;mount=/opt/modules/nccl/2.29.2;lib=/opt/modules/nccl/2.29.2/lib",
+			"env.modules.isambard.ac.uk/NCCL_NET":  "AWS Libfabric",
 		},
 	}
 	if !reflect.DeepEqual(got, want) {

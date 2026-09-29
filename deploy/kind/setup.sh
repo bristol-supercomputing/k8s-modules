@@ -93,13 +93,13 @@ kubectl -n module-system rollout status daemonset/module-nri --timeout=3m
 
 step "4. create nccl-2.29.2"
 kubectl apply -f - <<EOF
-apiVersion: modules.brics.ac.uk/v1alpha1
+apiVersion: modules.isambard.ac.uk/v1alpha1
 kind: Module
 metadata:
   name: nccl-2.29.2
   labels:
-    modules.brics.ac.uk/family: nccl
-    modules.brics.ac.uk/default: "true"
+    modules.isambard.ac.uk/family: nccl
+    modules.isambard.ac.uk/default: "true"
 spec:
   family: nccl
   version: 2.29.2

@@ -11,10 +11,10 @@ metadata:
   name: {{ .Release.Name }}-module-nri
   labels: {{- include "k8s-modules.labels" . | nindent 4 }}
 rules:
-- apiGroups: [modules.brics.ac.uk]
+- apiGroups: [modules.isambard.ac.uk]
   resources: [modules]
   verbs: [get, list, watch]
-- apiGroups: [modules.brics.ac.uk]
+- apiGroups: [modules.isambard.ac.uk]
   resources: [modulenodereports, modulenodereports/status]
   verbs: [get, create, update, patch]
 - apiGroups: [""]

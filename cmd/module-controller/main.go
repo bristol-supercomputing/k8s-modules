@@ -43,7 +43,7 @@ func main() {
 		Metrics:                metricsserver.Options{BindAddress: metricsAddr},
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         leaderElect,
-		LeaderElectionID:       "module-controller.modules.brics.ac.uk",
+		LeaderElectionID:       "module-controller.modules.isambard.ac.uk",
 		Cache:                  controller.CacheOptions(modulesNamespace),
 	})
 	if err != nil {

@@ -3,21 +3,21 @@ package v1alpha1
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 const (
-	LabelFamily  = "modules.brics.ac.uk/family"
-	LabelDefault = "modules.brics.ac.uk/default"
+	LabelFamily  = "modules.isambard.ac.uk/family"
+	LabelDefault = "modules.isambard.ac.uk/default"
 
-	AnnotationLoad           = "modules.brics.ac.uk/load"
-	AnnotationResolvedPrefix = "resolved.modules.brics.ac.uk/"
-	AnnotationEnvPrefix      = "env.modules.brics.ac.uk/"
+	AnnotationLoad           = "modules.isambard.ac.uk/load"
+	AnnotationResolvedPrefix = "resolved.modules.isambard.ac.uk/"
+	AnnotationEnvPrefix      = "env.modules.isambard.ac.uk/"
 
 	MountRoot        = "/opt/modules"
 	EnvLDLibraryPath = "LD_LIBRARY_PATH"
 
-	AnnotationContainers      = "modules.brics.ac.uk/containers"
+	AnnotationContainers      = "modules.isambard.ac.uk/containers"
 	AnnotationRequiredPlugins = "required-plugins.noderesource.dev/pod"
 	RequiredPluginsValue      = `["modules"]`
 	NRIPluginName             = "modules"
-	LabelHostPrefix           = "modules.brics.ac.uk/host-"
+	LabelHostPrefix           = "modules.isambard.ac.uk/host-"
 
 	ConditionResolved     = "Resolved"
 	ConditionConflictFree = "ConflictFree"

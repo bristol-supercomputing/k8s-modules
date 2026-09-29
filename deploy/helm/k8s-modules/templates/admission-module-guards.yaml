@@ -1,13 +1,13 @@
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:
-  name: module-guards.modules.brics.ac.uk
+  name: module-guards.modules.isambard.ac.uk
   labels: {{- include "k8s-modules.labels" . | nindent 4 }}
 spec:
   failurePolicy: Fail
   matchConstraints:
     resourceRules:
-    - {apiGroups: [modules.brics.ac.uk], apiVersions: [v1alpha1], operations: [CREATE, UPDATE], resources: [modules]}
+    - {apiGroups: [modules.isambard.ac.uk], apiVersions: [v1alpha1], operations: [CREATE, UPDATE], resources: [modules]}
   variables:
   - name: registries
     expression: |-
@@ -26,8 +26,8 @@ spec:
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicyBinding
 metadata:
-  name: module-guards.modules.brics.ac.uk
+  name: module-guards.modules.isambard.ac.uk
   labels: {{- include "k8s-modules.labels" . | nindent 4 }}
 spec:
-  policyName: module-guards.modules.brics.ac.uk
+  policyName: module-guards.modules.isambard.ac.uk
   validationActions: [Deny]
