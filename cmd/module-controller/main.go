@@ -58,6 +58,10 @@ func main() {
 		log.Error(err, "setting up node label controller")
 		os.Exit(1)
 	}
+	if err := (&controller.DeviceClassReconciler{Client: mgr.GetClient()}).SetupWithManager(mgr); err != nil {
+		log.Error(err, "setting up device class controller")
+		os.Exit(1)
+	}
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		log.Error(err, "healthz")
 		os.Exit(1)

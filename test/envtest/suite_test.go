@@ -84,6 +84,10 @@ func run(m *testing.M) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
+	if err := (&controller.DeviceClassReconciler{Client: mgr.GetClient()}).SetupWithManager(mgr); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
 	go func() { _ = mgr.Start(ctx) }()
 
 	if err := installPolicies(); err != nil {
