@@ -18,7 +18,7 @@ import (
 	v1 "github.com/isambard-sc/k8s-modules/api/v1alpha1"
 )
 
-// NodeLabelReconciler labels each node modules.brics.ac.uk/host-<family>
+// NodeLabelReconciler labels each node modules.isambard.ac.uk/host-<family>
 // for every host module its ModuleNodeReport shows ready.
 type NodeLabelReconciler struct {
 	client.Client

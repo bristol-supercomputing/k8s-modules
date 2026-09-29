@@ -181,10 +181,10 @@ func TestAdmissionFamilyConflictAcrossRequests(t *testing.T) {
 		waitResolved(t, n)
 	}
 	ns := newNamespace(t, nil)
-	reject(t, func() *corev1.Pod { return newPod(ns, p+"-1,"+q+"-1") }, "requires resolved.modules.brics.ac.uk/"+nccl)
+	reject(t, func() *corev1.Pod { return newPod(ns, p+"-1,"+q+"-1") }, "requires resolved.modules.isambard.ac.uk/"+nccl)
 	// The losing version is also "not loaded"; either policy may report first.
 	reject(t, func() *corev1.Pod { return newPod(ns, nccl+"-1,"+nccl+"-2") },
-		"requires resolved.modules.brics.ac.uk/"+nccl, "or in conflict with another loaded module")
+		"requires resolved.modules.isambard.ac.uk/"+nccl, "or in conflict with another loaded module")
 }
 
 func TestAdmissionEnvConflictAcrossRequests(t *testing.T) {
@@ -194,7 +194,7 @@ func TestAdmissionEnvConflictAcrossRequests(t *testing.T) {
 	waitResolved(t, p+"-1")
 	waitResolved(t, q+"-1")
 	ns := newNamespace(t, nil)
-	reject(t, func() *corev1.Pod { return newPod(ns, p+"-1,"+q+"-1") }, "requires env.modules.brics.ac.uk/NCCL_ALGO")
+	reject(t, func() *corev1.Pod { return newPod(ns, p+"-1,"+q+"-1") }, "requires env.modules.isambard.ac.uk/NCCL_ALGO")
 }
 
 func TestAdmissionForgedAnnotation(t *testing.T) {
@@ -210,7 +210,7 @@ func TestAdmissionForgedAnnotation(t *testing.T) {
 		p := newPod(ns, "")
 		p.Annotations[key] = forged
 		return p
-	}, "requires "+key, "modules.brics.ac.uk/containers must list the pod's containers")
+	}, "requires "+key, "modules.isambard.ac.uk/containers must list the pod's containers")
 
 	// Loading the module overwrites the forged value with the real one.
 	admit(t, func() *corev1.Pod {

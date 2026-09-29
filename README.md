@@ -1,13 +1,13 @@
 # k8s-modules
 
 An Lmod-style module system for Kubernetes. Admins publish versioned
-`Module` resources (`modules.brics.ac.uk/v1alpha1`); users load them into a
+`Module` resources (`modules.isambard.ac.uk/v1alpha1`); users load them into a
 pod with an annotation:
 
 ```yaml
 metadata:
   annotations:
-    modules.brics.ac.uk/load: aws-ofi-nccl-1.18.0
+    modules.isambard.ac.uk/load: aws-ofi-nccl-1.18.0
 ```
 
 - **module-controller** resolves each Module's dependency closure into its

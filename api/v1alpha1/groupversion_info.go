@@ -1,6 +1,6 @@
 // Package v1alpha1 contains the v1alpha1 Module API.
 // +kubebuilder:object:generate=true
-// +groupName=modules.brics.ac.uk
+// +groupName=modules.isambard.ac.uk
 package v1alpha1
 
 import (
@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	GroupVersion  = schema.GroupVersion{Group: "modules.brics.ac.uk", Version: "v1alpha1"}
+	GroupVersion  = schema.GroupVersion{Group: "modules.isambard.ac.uk", Version: "v1alpha1"}
 	SchemeBuilder = &scheme.Builder{GroupVersion: GroupVersion}
 	AddToScheme   = SchemeBuilder.AddToScheme
 )

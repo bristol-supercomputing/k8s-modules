@@ -2,7 +2,7 @@
 
 A **Module** is a named, versioned bundle of shared libraries (plus optional
 environment variables) that a pod can load. Modules are cluster-scoped
-`modules.brics.ac.uk/v1alpha1` resources that admins publish. Users load
+`modules.isambard.ac.uk/v1alpha1` resources that admins publish. Users load
 them with a pod annotation, the way they would run `module load` on
 Isambard.
 
@@ -21,7 +21,7 @@ This guide covers the three ways to provide a module's files:
    ```yaml
    metadata:
      annotations:
-       modules.brics.ac.uk/load: aws-ofi-nccl-1.18.0   # comma-separated; a family name loads its default
+       modules.isambard.ac.uk/load: aws-ofi-nccl-1.18.0   # comma-separated; a family name loads its default
    ```
 
 2. **Admission** looks up the Module and its resolved dependency closure. For
@@ -46,13 +46,13 @@ Init and ephemeral containers do not get modules.
 ## Fields common to every module
 
 ```yaml
-apiVersion: modules.brics.ac.uk/v1alpha1
+apiVersion: modules.isambard.ac.uk/v1alpha1
 kind: Module
 metadata:
   name: nccl-2.29.2               # must be <family>-<version>
   labels:
-    modules.brics.ac.uk/family: nccl
-    modules.brics.ac.uk/default: "true"   # optional: `load: nccl` picks this one (one per family)
+    modules.isambard.ac.uk/family: nccl
+    modules.isambard.ac.uk/default: "true"   # optional: `load: nccl` picks this one (one per family)
 spec:
   family: nccl                    # [a-z0-9-], at most 40 chars
   version: 2.29.2                 # at most 20 chars; keep it lowercase, since the name must be a DNS name
@@ -72,7 +72,7 @@ Rules to keep in mind:
 
 - **`spec` is immutable.** To change a module, publish a new version. To
   change which version `load: <family>` picks, move the
-  `modules.brics.ac.uk/default` label (the one mutable part).
+  `modules.isambard.ac.uk/default` label (the one mutable part).
 - **`env.set` names must start with a prefix in `envPrefixAllowlist`.** The
   defaults are `NCCL_`, `FI_`, `CXIP_`, `UCX_` and `OMPI_`.
 - **`env.set` cannot set these:** `LD_PRELOAD`, `LD_LIBRARY_PATH`, `LD_AUDIT`
@@ -141,13 +141,13 @@ jq -r '."containerimage.digest"' meta.json
 ### Write the Module
 
 ```yaml
-apiVersion: modules.brics.ac.uk/v1alpha1
+apiVersion: modules.isambard.ac.uk/v1alpha1
 kind: Module
 metadata:
   name: nccl-2.29.2
   labels:
-    modules.brics.ac.uk/family: nccl
-    modules.brics.ac.uk/default: "true"
+    modules.isambard.ac.uk/family: nccl
+    modules.isambard.ac.uk/default: "true"
 spec:
   family: nccl
   version: 2.29.2
@@ -166,11 +166,11 @@ A module can build on others with `dependsOn`. For example, aws-ofi-nccl
 needs NCCL and the host's libfabric:
 
 ```yaml
-apiVersion: modules.brics.ac.uk/v1alpha1
+apiVersion: modules.isambard.ac.uk/v1alpha1
 kind: Module
 metadata:
   name: aws-ofi-nccl-1.18.0
-  labels: {modules.brics.ac.uk/family: aws-ofi-nccl}
+  labels: {modules.isambard.ac.uk/family: aws-ofi-nccl}
 spec:
   family: aws-ofi-nccl
   version: 1.18.0
@@ -217,7 +217,9 @@ underneath running pods, prefer an image module once the build settles.
 
 The claim must be in the modules namespace (`modulesNamespace`, default
 `module-system`), have the `ReadOnlyMany` access mode, and be listed in the
-chart's `nri.pvcs`. The `module-nri` DaemonSet mounts every listed claim.
+chart's `nri.pvcs`. The `module-nri` DaemonSet mounts every listed claim,
+so on nodes that can't mount one, its pod never starts; keep it off those
+nodes with `nri.nodeSelector`.
 
 ```yaml
 apiVersion: v1
@@ -247,11 +249,11 @@ directory for a symlink between that check and the bind.
 is mounted at `/opt/modules/<family>/<version>`:
 
 ```yaml
-apiVersion: modules.brics.ac.uk/v1alpha1
+apiVersion: modules.isambard.ac.uk/v1alpha1
 kind: Module
 metadata:
   name: nccl-2.30.0-rc1
-  labels: {modules.brics.ac.uk/family: nccl}
+  labels: {modules.isambard.ac.uk/family: nccl}
 spec:
   family: nccl
   version: 2.30.0-rc1
@@ -282,13 +284,13 @@ together with everything they depend on.
 ### Write the Module
 
 ```yaml
-apiVersion: modules.brics.ac.uk/v1alpha1
+apiVersion: modules.isambard.ac.uk/v1alpha1
 kind: Module
 metadata:
   name: libfabric-host          # convention: version "host"
   labels:
-    modules.brics.ac.uk/family: libfabric
-    modules.brics.ac.uk/default: "true"
+    modules.isambard.ac.uk/family: libfabric
+    modules.isambard.ac.uk/default: "true"
 spec:
   family: libfabric
   version: host
@@ -342,7 +344,7 @@ can use to schedule only onto nodes that have the libraries:
 ```yaml
 spec:
   nodeSelector:
-    modules.brics.ac.uk/host-libfabric: "true"
+    modules.isambard.ac.uk/host-libfabric: "true"
 ```
 
 On a node where the module isn't ready, containers that load it fail with
@@ -356,7 +358,7 @@ On a node where the module isn't ready, containers that load it fail with
 |---|---|
 | `module "X" was not loaded: not found, not resolved, not permitted in namespace "ns", or in conflict with another loaded module` | Check `kubectl get module X` and its conditions, and the module's `access.matchLabels` |
 | `module "X" is not resolved: …` | A dependency is missing, there is a cycle, a conflict, or a bad PVC; the reason follows |
-| `module "X" requires resolved.modules.brics.ac.uk/<family>=…, but the pod has …` | Two loaded modules (or their dependencies) need different versions of one family, or set one variable differently |
+| `module "X" requires resolved.modules.isambard.ac.uk/<family>=…, but the pod has …` | Two loaded modules (or their dependencies) need different versions of one family, or set one variable differently |
 | `image … is not in an allowed registry` | Push the module image to a registry in `registryAllowlist` |
 | `env.set name X must start with one of …` | Rename the variable, or add its prefix to `envPrefixAllowlist` |
 | `module "X" is already the default for family "f"` | Remove the default label from the old version first |

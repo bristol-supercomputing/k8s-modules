@@ -1,29 +1,29 @@
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:
-  name: module-default.modules.brics.ac.uk
+  name: module-default.modules.isambard.ac.uk
   labels: {{- include "k8s-modules.labels" . | nindent 4 }}
 spec:
   failurePolicy: Fail
-  paramKind: {apiVersion: modules.brics.ac.uk/v1alpha1, kind: Module}
+  paramKind: {apiVersion: modules.isambard.ac.uk/v1alpha1, kind: Module}
   matchConstraints:
     resourceRules:
-    - {apiGroups: [modules.brics.ac.uk], apiVersions: [v1alpha1], operations: [CREATE, UPDATE], resources: [modules]}
+    - {apiGroups: [modules.isambard.ac.uk], apiVersions: [v1alpha1], operations: [CREATE, UPDATE], resources: [modules]}
   matchConditions:
   - name: is-default
-    expression: "has(object.metadata.labels) && 'modules.brics.ac.uk/default' in object.metadata.labels && object.metadata.labels['modules.brics.ac.uk/default'] == 'true'"
+    expression: "has(object.metadata.labels) && 'modules.isambard.ac.uk/default' in object.metadata.labels && object.metadata.labels['modules.isambard.ac.uk/default'] == 'true'"
   validations:
   - expression: >-
       params.metadata.name == object.metadata.name || params.spec.family != object.spec.family ||
-      !(has(params.metadata.labels) && 'modules.brics.ac.uk/default' in params.metadata.labels && params.metadata.labels['modules.brics.ac.uk/default'] == 'true')
+      !(has(params.metadata.labels) && 'modules.isambard.ac.uk/default' in params.metadata.labels && params.metadata.labels['modules.isambard.ac.uk/default'] == 'true')
     messageExpression: "'module \"' + params.metadata.name + '\" is already the default for family \"' + object.spec.family + '\"'"
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicyBinding
 metadata:
-  name: module-default.modules.brics.ac.uk
+  name: module-default.modules.isambard.ac.uk
   labels: {{- include "k8s-modules.labels" . | nindent 4 }}
 spec:
-  policyName: module-default.modules.brics.ac.uk
+  policyName: module-default.modules.isambard.ac.uk
   validationActions: [Deny]
   paramRef: {selector: {}, parameterNotFoundAction: Allow}

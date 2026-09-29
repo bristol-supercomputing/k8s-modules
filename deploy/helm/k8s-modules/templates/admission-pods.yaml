@@ -1,7 +1,7 @@
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:
-  name: pods.modules.brics.ac.uk
+  name: pods.modules.isambard.ac.uk
   labels: {{- include "k8s-modules.labels" . | nindent 4 }}
 spec:
   failurePolicy: Fail
@@ -13,57 +13,57 @@ spec:
   - name: has-module-annotations
     expression: >-
       (has(object.metadata.annotations) && object.metadata.annotations.exists(k,
-        k == 'modules.brics.ac.uk/load' || k.startsWith('resolved.modules.brics.ac.uk/') || k.startsWith('env.modules.brics.ac.uk/') || k == 'modules.brics.ac.uk/containers' || k.startsWith('required-plugins.noderesource.dev'))) ||
+        k == 'modules.isambard.ac.uk/load' || k.startsWith('resolved.modules.isambard.ac.uk/') || k.startsWith('env.modules.isambard.ac.uk/') || k == 'modules.isambard.ac.uk/containers' || k.startsWith('required-plugins.noderesource.dev'))) ||
       (request.operation == 'UPDATE' && has(oldObject.metadata.annotations) && oldObject.metadata.annotations.exists(k,
-        k == 'modules.brics.ac.uk/load' || k.startsWith('resolved.modules.brics.ac.uk/') || k.startsWith('env.modules.brics.ac.uk/') || k == 'modules.brics.ac.uk/containers' || k.startsWith('required-plugins.noderesource.dev')))
+        k == 'modules.isambard.ac.uk/load' || k.startsWith('resolved.modules.isambard.ac.uk/') || k.startsWith('env.modules.isambard.ac.uk/') || k == 'modules.isambard.ac.uk/containers' || k.startsWith('required-plugins.noderesource.dev')))
   variables:
   - name: anns
     expression: "has(object.metadata.annotations) ? object.metadata.annotations : {}"
   - name: oldAnns
     expression: "request.operation == 'UPDATE' && has(oldObject.metadata.annotations) ? oldObject.metadata.annotations : {}"
   - name: requested
-    expression: "'modules.brics.ac.uk/load' in variables.anns ? variables.anns['modules.brics.ac.uk/load'].split(',').map(s, s.trim()).filter(s, s != '') : []"
+    expression: "'modules.isambard.ac.uk/load' in variables.anns ? variables.anns['modules.isambard.ac.uk/load'].split(',').map(s, s.trim()).filter(s, s != '') : []"
   - name: badNames
     expression: "variables.requested.filter(r, r.size() > 61 || !r.matches('^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$'))"
   - name: hasResolved
-    expression: "variables.anns.exists(k, k.startsWith('resolved.modules.brics.ac.uk/'))"
+    expression: "variables.anns.exists(k, k.startsWith('resolved.modules.isambard.ac.uk/'))"
   - name: misfiled
-    # 29 == len('resolved.modules.brics.ac.uk/'); a value must name a module
+    # 32 == len('resolved.modules.isambard.ac.uk/'); a value must name a module
     # of its key's family, or no Module would compare it with anything.
     expression: >-
-      variables.anns.filter(k, k.startsWith('resolved.modules.brics.ac.uk/') &&
-        !variables.anns[k].startsWith(k.substring(29) + '-'))
+      variables.anns.filter(k, k.startsWith('resolved.modules.isambard.ac.uk/') &&
+        !variables.anns[k].startsWith(k.substring(32) + '-'))
   - name: unknown
     expression: >-
       variables.requested.filter(r,
-        !(('resolved.modules.brics.ac.uk/' + r) in variables.anns) &&
-        !variables.anns.exists(k, k.startsWith('resolved.modules.brics.ac.uk/') && variables.anns[k].startsWith(r + ';')))
+        !(('resolved.modules.isambard.ac.uk/' + r) in variables.anns) &&
+        !variables.anns.exists(k, k.startsWith('resolved.modules.isambard.ac.uk/') && variables.anns[k].startsWith(r + ';')))
   validations:
   - expression: "request.operation != 'CREATE' || variables.requested.size() <= 32"
-    message: "modules.brics.ac.uk/load lists more than 32 modules"
+    message: "modules.isambard.ac.uk/load lists more than 32 modules"
   - expression: "request.operation != 'CREATE' || variables.badNames.size() == 0"
-    messageExpression: "'invalid module name \"' + variables.badNames[0] + '\" in modules.brics.ac.uk/load'"
+    messageExpression: "'invalid module name \"' + variables.badNames[0] + '\" in modules.isambard.ac.uk/load'"
   - expression: "request.operation != 'CREATE' || variables.badNames.size() > 0 || variables.unknown.size() == 0"
     messageExpression: >-
       'module "' + variables.unknown[0] + '" was not loaded: not found, not resolved, not permitted in namespace "' +
       request.namespace + '", or in conflict with another loaded module (kubectl get module ' + variables.unknown[0] + ')'
   - expression: "request.operation != 'CREATE' || variables.misfiled.size() == 0"
     messageExpression: >-
-      'annotation ' + variables.misfiled[0] + ' must name a module of family "' + variables.misfiled[0].substring(29) + '"'
+      'annotation ' + variables.misfiled[0] + ' must name a module of family "' + variables.misfiled[0].substring(32) + '"'
   - expression: >-
       request.operation != 'UPDATE' || (
         variables.oldAnns.all(k,
-          !(k == 'modules.brics.ac.uk/load' || k.startsWith('resolved.modules.brics.ac.uk/') || k.startsWith('env.modules.brics.ac.uk/') || k == 'modules.brics.ac.uk/containers' || k.startsWith('required-plugins.noderesource.dev')) ||
+          !(k == 'modules.isambard.ac.uk/load' || k.startsWith('resolved.modules.isambard.ac.uk/') || k.startsWith('env.modules.isambard.ac.uk/') || k == 'modules.isambard.ac.uk/containers' || k.startsWith('required-plugins.noderesource.dev')) ||
           (k in variables.anns && variables.anns[k] == variables.oldAnns[k])) &&
         variables.anns.all(k,
-          !(k == 'modules.brics.ac.uk/load' || k.startsWith('resolved.modules.brics.ac.uk/') || k.startsWith('env.modules.brics.ac.uk/') || k == 'modules.brics.ac.uk/containers' || k.startsWith('required-plugins.noderesource.dev')) ||
+          !(k == 'modules.isambard.ac.uk/load' || k.startsWith('resolved.modules.isambard.ac.uk/') || k.startsWith('env.modules.isambard.ac.uk/') || k == 'modules.isambard.ac.uk/containers' || k.startsWith('required-plugins.noderesource.dev')) ||
           k in variables.oldAnns))
-    message: "module annotations (modules.brics.ac.uk/load, resolved.modules.brics.ac.uk/*, env.modules.brics.ac.uk/*, modules.brics.ac.uk/containers, required-plugins.noderesource.dev*) cannot be changed after the pod is created"
+    message: "module annotations (modules.isambard.ac.uk/load, resolved.modules.isambard.ac.uk/*, env.modules.isambard.ac.uk/*, modules.isambard.ac.uk/containers, required-plugins.noderesource.dev*) cannot be changed after the pod is created"
   - expression: >-
       request.operation != 'CREATE' || !variables.hasResolved ||
-      ('modules.brics.ac.uk/containers' in variables.anns &&
-       variables.anns['modules.brics.ac.uk/containers'] == object.spec.containers.map(c, c.name).join(','))
-    message: "modules.brics.ac.uk/containers must list the pod's containers (the module admission policy sets it)"
+      ('modules.isambard.ac.uk/containers' in variables.anns &&
+       variables.anns['modules.isambard.ac.uk/containers'] == object.spec.containers.map(c, c.name).join(','))
+    message: "modules.isambard.ac.uk/containers must list the pod's containers (the module admission policy sets it)"
   - expression: >-
       request.operation != 'CREATE' || !variables.hasResolved ||
       ('required-plugins.noderesource.dev/pod' in variables.anns &&
@@ -79,8 +79,8 @@ spec:
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicyBinding
 metadata:
-  name: pods.modules.brics.ac.uk
+  name: pods.modules.isambard.ac.uk
   labels: {{- include "k8s-modules.labels" . | nindent 4 }}
 spec:
-  policyName: pods.modules.brics.ac.uk
+  policyName: pods.modules.isambard.ac.uk
   validationActions: [Deny]

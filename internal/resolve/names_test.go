@@ -113,10 +113,10 @@ func TestAnnotationValue(t *testing.T) {
 }
 
 func TestAnnotationKeys(t *testing.T) {
-	if got := ResolvedAnnotationKey("nccl"); got != "resolved.modules.brics.ac.uk/nccl" {
+	if got := ResolvedAnnotationKey("nccl"); got != "resolved.modules.isambard.ac.uk/nccl" {
 		t.Errorf("got %q", got)
 	}
-	if got := EnvAnnotationKey("NCCL_NET"); got != "env.modules.brics.ac.uk/NCCL_NET" {
+	if got := EnvAnnotationKey("NCCL_NET"); got != "env.modules.isambard.ac.uk/NCCL_NET" {
 		t.Errorf("got %q", got)
 	}
 }

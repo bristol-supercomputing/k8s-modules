@@ -58,7 +58,7 @@ func TestAdmissionNRIAnnotationsRequired(t *testing.T) {
 			return p
 		}
 	}
-	reject(t, written(nil), "modules.brics.ac.uk/containers must list the pod's containers")
+	reject(t, written(nil), "modules.isambard.ac.uk/containers must list the pod's containers")
 	reject(t, written(map[string]string{v1.AnnotationContainers: "main"}), "required-plugins.noderesource.dev/pod must be")
 	admit(t, written(map[string]string{v1.AnnotationContainers: "main", v1.AnnotationRequiredPlugins: v1.RequiredPluginsValue}),
 		hasAnnotations(m.Status.Resolved.Annotations))

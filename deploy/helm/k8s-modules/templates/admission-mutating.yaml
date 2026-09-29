@@ -1,23 +1,23 @@
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingAdmissionPolicy
 metadata:
-  name: modules.brics.ac.uk
+  name: modules.isambard.ac.uk
   labels: {{- include "k8s-modules.labels" . | nindent 4 }}
 spec:
   failurePolicy: Fail
-  paramKind: {apiVersion: modules.brics.ac.uk/v1alpha1, kind: Module}
+  paramKind: {apiVersion: modules.isambard.ac.uk/v1alpha1, kind: Module}
   matchConstraints:
     {{- include "k8s-modules.podPolicyNamespaces" . | nindent 4 }}
     resourceRules:
     - {apiGroups: [""], apiVersions: [v1], operations: [CREATE], resources: [pods]}
   matchConditions:
   - name: has-load
-    expression: "has(object.metadata.annotations) && 'modules.brics.ac.uk/load' in object.metadata.annotations"
+    expression: "has(object.metadata.annotations) && 'modules.isambard.ac.uk/load' in object.metadata.annotations"
   variables:
   - name: requested
-    expression: "object.metadata.annotations['modules.brics.ac.uk/load'].split(',').map(s, s.trim()).filter(s, s != '')"
+    expression: "object.metadata.annotations['modules.isambard.ac.uk/load'].split(',').map(s, s.trim()).filter(s, s != '')"
   - name: isDefault
-    expression: "has(params.metadata.labels) && 'modules.brics.ac.uk/default' in params.metadata.labels && params.metadata.labels['modules.brics.ac.uk/default'] == 'true'"
+    expression: "has(params.metadata.labels) && 'modules.isambard.ac.uk/default' in params.metadata.labels && params.metadata.labels['modules.isambard.ac.uk/default'] == 'true'"
   - name: isRequested
     expression: "params.metadata.name in variables.requested || (params.spec.family in variables.requested && variables.isDefault)"
   - name: nsAllowed
@@ -59,7 +59,7 @@ spec:
         !variables.applies ? Object{} :
         Object{
           metadata: Object.metadata{annotations: {
-            'modules.brics.ac.uk/containers': object.spec.containers.map(c, c.name).join(','),
+            'modules.isambard.ac.uk/containers': object.spec.containers.map(c, c.name).join(','),
             'required-plugins.noderesource.dev/pod': '["modules"]'
           }}
         }
@@ -67,8 +67,8 @@ spec:
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingAdmissionPolicyBinding
 metadata:
-  name: modules.brics.ac.uk
+  name: modules.isambard.ac.uk
   labels: {{- include "k8s-modules.labels" . | nindent 4 }}
 spec:
-  policyName: modules.brics.ac.uk
+  policyName: modules.isambard.ac.uk
   paramRef: {selector: {}, parameterNotFoundAction: Allow}

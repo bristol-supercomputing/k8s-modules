@@ -201,7 +201,7 @@ func TestConflict(t *testing.T) {
 	waitReason(t, c, "nccl-2.28.0", "Resolved")
 	ns := namespace(t, c, "e2e-conflict")
 	// The losing version is also "not loaded"; either policy may report first.
-	expectRejected(t, c, ns, "nccl-2.29.2,nccl-2.28.0", "requires resolved.modules.brics.ac.uk/nccl", "or in conflict with another loaded module")
+	expectRejected(t, c, ns, "nccl-2.29.2,nccl-2.28.0", "requires resolved.modules.isambard.ac.uk/nccl", "or in conflict with another loaded module")
 	expectRejected(t, c, ns, "e2e-both-1", "is not resolved", "was not loaded")
 }
 
