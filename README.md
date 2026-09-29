@@ -10,6 +10,9 @@ metadata:
     modules.isambard.ac.uk/load: aws-ofi-nccl-1.18.0
 ```
 
+Modules go to every container in `spec.containers` unless
+`modules.isambard.ac.uk/load-containers` lists which ones (e.g. `trainer`).
+
 - **module-controller** resolves each Module's dependency closure into its
   `status`.
 - **Admission policies** (a MutatingAdmissionPolicy and several

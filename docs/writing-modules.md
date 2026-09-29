@@ -22,16 +22,18 @@ This guide covers the three ways to provide a module's files:
    metadata:
      annotations:
        modules.isambard.ac.uk/load: aws-ofi-nccl-1.18.0   # comma-separated; a family name loads its default
+       modules.isambard.ac.uk/load-containers: trainer     # optional: which containers get the modules
    ```
 
 2. **Admission** looks up the Module and its resolved dependency closure. For
    image modules, it adds an image volume and a read-only mount to every
-   container in `spec.containers`. It also adds the module's `env.set`
+   container named in `load-containers` (by default, every container in
+   `spec.containers`). It also adds the module's `env.set`
    variables and annotations that record exactly what was loaded. It rejects
    the pod if a module is unknown, unresolved, not permitted in the
    namespace, or conflicts with another loaded module.
-3. **module-nri**, the node plugin, runs when each container is created. It
-   prepends every module's library directories to `LD_LIBRARY_PATH` (ahead
+3. **module-nri**, the node plugin, runs when each selected container is
+   created. It prepends every module's library directories to `LD_LIBRARY_PATH` (ahead
    of the image's own value) and sets `BRICS_MODULES`. It also binds `pvc`
    and `host` module files and applies `maskPaths`.
 
@@ -41,7 +43,12 @@ Every module is mounted read-only at a fixed path:
 /opt/modules/<family>/<version>
 ```
 
-Init and ephemeral containers do not get modules.
+`load-containers` is a comma-separated list of names from `spec.containers`.
+Every loaded module goes to all the listed containers; to give containers
+different modules, run them in separate pods. A pod is rejected if the list
+names a container it doesn't have, or selects none. Like `load`, it can't be
+changed after the pod is created. Init and ephemeral containers do not get
+modules.
 
 ## Fields common to every module
 

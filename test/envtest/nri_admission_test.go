@@ -23,7 +23,7 @@ func TestAdmissionNRIAnnotations(t *testing.T) {
 		return newPod(ns, m.Name, corev1.Container{Name: "a", Image: "busybox"}, corev1.Container{Name: "b", Image: "busybox"})
 	}, hasAnnotations(map[string]string{v1.AnnotationContainers: "a,b", v1.AnnotationRequiredPlugins: v1.RequiredPluginsValue}))
 
-	for key, value := range map[string]string{v1.AnnotationContainers: "a", v1.AnnotationRequiredPlugins: "[]"} {
+	for key, value := range map[string]string{v1.AnnotationContainers: "a", v1.AnnotationLoadContainers: "a", v1.AnnotationRequiredPlugins: "[]"} {
 		cur := &corev1.Pod{}
 		if err := k8s.Get(ctx, client.ObjectKeyFromObject(p), cur); err != nil {
 			t.Fatal(err)
@@ -58,10 +58,54 @@ func TestAdmissionNRIAnnotationsRequired(t *testing.T) {
 			return p
 		}
 	}
-	reject(t, written(nil), "modules.isambard.ac.uk/containers must list the pod's containers")
+	reject(t, written(nil), "modules.isambard.ac.uk/containers must list the containers selected")
 	reject(t, written(map[string]string{v1.AnnotationContainers: "main"}), "required-plugins.noderesource.dev/pod must be")
 	admit(t, written(map[string]string{v1.AnnotationContainers: "main", v1.AnnotationRequiredPlugins: v1.RequiredPluginsValue}),
 		hasAnnotations(m.Status.Resolved.Annotations))
+
+	// Written without the mutating policy, containers must match load-containers.
+	two := func(containers string) func() *corev1.Pod {
+		return func() *corev1.Pod {
+			p := written(map[string]string{v1.AnnotationLoadContainers: "b", v1.AnnotationContainers: containers,
+				v1.AnnotationRequiredPlugins: v1.RequiredPluginsValue})()
+			p.Spec.Containers = []corev1.Container{{Name: "a", Image: "busybox"}, {Name: "b", Image: "busybox"}}
+			return p
+		}
+	}
+	reject(t, two("a,b"), "modules.isambard.ac.uk/containers must list the containers selected")
+	admit(t, two("b"), hasAnnotations(m.Status.Resolved.Annotations))
+}
+
+func TestAdmissionLoadContainers(t *testing.T) {
+	fam := newFamily("sel")
+	m := imageModule(fam, "1", withEnv("NCCL_DEBUG", "INFO"))
+	create(t, m)
+	m = waitResolved(t, m.Name)
+	ns := newNamespace(t, nil)
+	pod := func(sel string) func() *corev1.Pod {
+		return func() *corev1.Pod {
+			p := newPod(ns, m.Name, corev1.Container{Name: "a", Image: "busybox"}, corev1.Container{Name: "b", Image: "busybox"},
+				corev1.Container{Name: "c", Image: "busybox"})
+			p.Annotations[v1.AnnotationLoadContainers] = sel
+			return p
+		}
+	}
+
+	p := admit(t, pod("c, a"), hasAnnotations(map[string]string{v1.AnnotationContainers: "a,c"}))
+	for _, c := range p.Spec.Containers {
+		_, hasEnv := envValue(c, "NCCL_DEBUG")
+		selected := c.Name != "b"
+		if (len(c.VolumeMounts) == 1) != selected || hasEnv != selected {
+			t.Errorf("container %s (selected=%v): mounts = %+v, NCCL_DEBUG set = %v", c.Name, selected, c.VolumeMounts, hasEnv)
+		}
+	}
+	if len(p.Spec.Volumes) != 1 {
+		t.Errorf("volumes = %+v, want the one image volume", p.Spec.Volumes)
+	}
+
+	reject(t, pod("a,sidecar"), `modules.isambard.ac.uk/load-containers names "sidecar", which is not a container in spec.containers`)
+	reject(t, pod(" , "), "modules.isambard.ac.uk/load-containers selects no containers")
+	reject(t, pod(""), "modules.isambard.ac.uk/load-containers selects no containers")
 }
 
 func TestModuleReportNodeIdentity(t *testing.T) {

@@ -33,6 +33,13 @@ spec:
     expression: "variables.applies && has(params.status.resolved.mounts) ? params.status.resolved.mounts : []"
   - name: env
     expression: "variables.applies && has(params.status.resolved.env) ? params.status.resolved.env : []"
+  - name: selected
+    expression: >-
+      'modules.isambard.ac.uk/load-containers' in object.metadata.annotations ?
+        object.metadata.annotations['modules.isambard.ac.uk/load-containers'].split(',').map(s, s.trim()).filter(s, s != '') :
+        object.spec.containers.map(c, c.name)
+  - name: targets
+    expression: "object.spec.containers.filter(c, c.name in variables.selected)"
   reinvocationPolicy: IfNeeded
   mutations:
   - patchType: ApplyConfiguration
@@ -46,7 +53,7 @@ spec:
               name: v.name,
               image: Object.spec.volumes.image{reference: v.reference, pullPolicy: "IfNotPresent"}
             }),
-            containers: object.spec.containers.map(c, Object.spec.containers{
+            containers: variables.targets.map(c, Object.spec.containers{
               name: c.name,
               volumeMounts: variables.mounts.map(m, Object.spec.containers.volumeMounts{name: m.name, mountPath: m.mountPath, readOnly: true}),
               env: variables.env.filter(e, !has(c.env) || !c.env.exists(ce, ce.name == e.name)).map(e, Object.spec.containers.env{name: e.name, value: e.value})
@@ -59,7 +66,7 @@ spec:
         !variables.applies ? Object{} :
         Object{
           metadata: Object.metadata{annotations: {
-            'modules.isambard.ac.uk/containers': object.spec.containers.map(c, c.name).join(','),
+            'modules.isambard.ac.uk/containers': variables.targets.map(c, c.name).join(','),
             'required-plugins.noderesource.dev/pod': '["modules"]'
           }}
         }

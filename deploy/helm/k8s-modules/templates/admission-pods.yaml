@@ -13,9 +13,9 @@ spec:
   - name: has-module-annotations
     expression: >-
       (has(object.metadata.annotations) && object.metadata.annotations.exists(k,
-        k == 'modules.isambard.ac.uk/load' || k.startsWith('resolved.modules.isambard.ac.uk/') || k.startsWith('env.modules.isambard.ac.uk/') || k == 'modules.isambard.ac.uk/containers' || k.startsWith('required-plugins.noderesource.dev'))) ||
+        k == 'modules.isambard.ac.uk/load' || k.startsWith('resolved.modules.isambard.ac.uk/') || k.startsWith('env.modules.isambard.ac.uk/') || k == 'modules.isambard.ac.uk/containers' || k == 'modules.isambard.ac.uk/load-containers' || k.startsWith('required-plugins.noderesource.dev'))) ||
       (request.operation == 'UPDATE' && has(oldObject.metadata.annotations) && oldObject.metadata.annotations.exists(k,
-        k == 'modules.isambard.ac.uk/load' || k.startsWith('resolved.modules.isambard.ac.uk/') || k.startsWith('env.modules.isambard.ac.uk/') || k == 'modules.isambard.ac.uk/containers' || k.startsWith('required-plugins.noderesource.dev')))
+        k == 'modules.isambard.ac.uk/load' || k.startsWith('resolved.modules.isambard.ac.uk/') || k.startsWith('env.modules.isambard.ac.uk/') || k == 'modules.isambard.ac.uk/containers' || k == 'modules.isambard.ac.uk/load-containers' || k.startsWith('required-plugins.noderesource.dev')))
   variables:
   - name: anns
     expression: "has(object.metadata.annotations) ? object.metadata.annotations : {}"
@@ -25,6 +25,15 @@ spec:
     expression: "'modules.isambard.ac.uk/load' in variables.anns ? variables.anns['modules.isambard.ac.uk/load'].split(',').map(s, s.trim()).filter(s, s != '') : []"
   - name: badNames
     expression: "variables.requested.filter(r, r.size() > 61 || !r.matches('^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$'))"
+  - name: selected
+    expression: >-
+      'modules.isambard.ac.uk/load-containers' in variables.anns ?
+        variables.anns['modules.isambard.ac.uk/load-containers'].split(',').map(s, s.trim()).filter(s, s != '') :
+        object.spec.containers.map(c, c.name)
+  - name: badContainers
+    expression: "variables.selected.filter(n, !object.spec.containers.exists(c, c.name == n))"
+  - name: targets
+    expression: "object.spec.containers.filter(c, c.name in variables.selected)"
   - name: hasResolved
     expression: "variables.anns.exists(k, k.startsWith('resolved.modules.isambard.ac.uk/'))"
   - name: misfiled
@@ -53,17 +62,24 @@ spec:
   - expression: >-
       request.operation != 'UPDATE' || (
         variables.oldAnns.all(k,
-          !(k == 'modules.isambard.ac.uk/load' || k.startsWith('resolved.modules.isambard.ac.uk/') || k.startsWith('env.modules.isambard.ac.uk/') || k == 'modules.isambard.ac.uk/containers' || k.startsWith('required-plugins.noderesource.dev')) ||
+          !(k == 'modules.isambard.ac.uk/load' || k.startsWith('resolved.modules.isambard.ac.uk/') || k.startsWith('env.modules.isambard.ac.uk/') || k == 'modules.isambard.ac.uk/containers' || k == 'modules.isambard.ac.uk/load-containers' || k.startsWith('required-plugins.noderesource.dev')) ||
           (k in variables.anns && variables.anns[k] == variables.oldAnns[k])) &&
         variables.anns.all(k,
-          !(k == 'modules.isambard.ac.uk/load' || k.startsWith('resolved.modules.isambard.ac.uk/') || k.startsWith('env.modules.isambard.ac.uk/') || k == 'modules.isambard.ac.uk/containers' || k.startsWith('required-plugins.noderesource.dev')) ||
+          !(k == 'modules.isambard.ac.uk/load' || k.startsWith('resolved.modules.isambard.ac.uk/') || k.startsWith('env.modules.isambard.ac.uk/') || k == 'modules.isambard.ac.uk/containers' || k == 'modules.isambard.ac.uk/load-containers' || k.startsWith('required-plugins.noderesource.dev')) ||
           k in variables.oldAnns))
-    message: "module annotations (modules.isambard.ac.uk/load, resolved.modules.isambard.ac.uk/*, env.modules.isambard.ac.uk/*, modules.isambard.ac.uk/containers, required-plugins.noderesource.dev*) cannot be changed after the pod is created"
+    message: "module annotations (modules.isambard.ac.uk/load, resolved.modules.isambard.ac.uk/*, env.modules.isambard.ac.uk/*, modules.isambard.ac.uk/containers, modules.isambard.ac.uk/load-containers, required-plugins.noderesource.dev*) cannot be changed after the pod is created"
+  - expression: "request.operation != 'CREATE' || variables.badContainers.size() == 0"
+    messageExpression: >-
+      'modules.isambard.ac.uk/load-containers names "' + variables.badContainers[0] + '", which is not a container in spec.containers'
+  - expression: >-
+      request.operation != 'CREATE' || !('modules.isambard.ac.uk/load-containers' in variables.anns) ||
+      variables.badContainers.size() > 0 || variables.targets.size() > 0
+    message: "modules.isambard.ac.uk/load-containers selects no containers"
   - expression: >-
       request.operation != 'CREATE' || !variables.hasResolved ||
       ('modules.isambard.ac.uk/containers' in variables.anns &&
-       variables.anns['modules.isambard.ac.uk/containers'] == object.spec.containers.map(c, c.name).join(','))
-    message: "modules.isambard.ac.uk/containers must list the pod's containers (the module admission policy sets it)"
+       variables.anns['modules.isambard.ac.uk/containers'] == variables.targets.map(c, c.name).join(','))
+    message: "modules.isambard.ac.uk/containers must list the containers selected by modules.isambard.ac.uk/load-containers, or all containers when it is unset (the module admission policy sets it)"
   - expression: >-
       request.operation != 'CREATE' || !variables.hasResolved ||
       ('required-plugins.noderesource.dev/pod' in variables.anns &&
