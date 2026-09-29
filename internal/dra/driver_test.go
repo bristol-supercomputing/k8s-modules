@@ -68,12 +68,49 @@ func TestPrepareIdempotent(t *testing.T) {
 	claim, pod := claimAndPod(c, req{"a", resolve.ResourceName("x-1"), "x-1"})
 	reserve(claim, pod)
 	d := driverFor(t, c, pod)
-	first, _ := d.PrepareResourceClaims(context.Background(), []*resourceapi.ResourceClaim{claim})
-	a, _ := os.ReadFile(SpecPath(d.CDIDir, claim.UID))
-	again, _ := d.PrepareResourceClaims(context.Background(), []*resourceapi.ResourceClaim{claim})
-	b, _ := os.ReadFile(SpecPath(d.CDIDir, claim.UID))
+	first, err := d.PrepareResourceClaims(context.Background(), []*resourceapi.ResourceClaim{claim})
+	if err != nil || first[claim.UID].Err != nil {
+		t.Fatalf("first prepare: %v %v", err, first[claim.UID].Err)
+	}
+	a, err := os.ReadFile(SpecPath(d.CDIDir, claim.UID))
+	if err != nil || len(a) == 0 {
+		t.Fatalf("spec after first prepare: %q %v", a, err)
+	}
+	again, err := d.PrepareResourceClaims(context.Background(), []*resourceapi.ResourceClaim{claim})
+	if err != nil || again[claim.UID].Err != nil {
+		t.Fatalf("second prepare: %v %v", err, again[claim.UID].Err)
+	}
+	b, err := os.ReadFile(SpecPath(d.CDIDir, claim.UID))
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !reflect.DeepEqual(first, again) || string(a) != string(b) {
 		t.Error("prepare must be idempotent")
+	}
+}
+
+func TestPrepareRepeatedRequestGetsOneCDIID(t *testing.T) {
+	c := catalogue(t, mod("x", "1", img))
+	claim, pod := claimAndPod(c, req{"a", resolve.ResourceName("x-1"), "x-1"})
+	reserve(claim, pod)
+	results := &claim.Status.Allocation.Devices.Results
+	if len(*results) == 0 {
+		t.Fatal("no allocation results")
+	}
+	*results = append(*results, (*results)[0])
+	res, err := driverFor(t, c, pod).PrepareResourceClaims(context.Background(), []*resourceapi.ResourceClaim{claim})
+	if err != nil || res[claim.UID].Err != nil {
+		t.Fatalf("prepare: %v %v", err, res[claim.UID].Err)
+	}
+	devs := res[claim.UID].Devices
+	withID := 0
+	for _, d := range devs {
+		if len(d.CDIDeviceIDs) > 0 {
+			withID++
+		}
+	}
+	if len(devs) != 2 || withID != 1 || len(devs[0].CDIDeviceIDs) != 1 {
+		t.Errorf("devices = %+v", devs)
 	}
 }
 

@@ -72,12 +72,16 @@ func (d *Driver) prepare(ctx context.Context, c *resourceapi.ResourceClaim) kube
 		return fail(err)
 	}
 	var res kubeletplugin.PrepareResult
+	seen := map[string]bool{}
 	for _, r := range c.Status.Allocation.Devices.Results {
 		if r.Driver != v1.DriverName {
 			continue
 		}
 		dev := kubeletplugin.Device{Requests: []string{r.Request}, PoolName: r.Pool, DeviceName: r.Device, ShareID: r.ShareID}
-		if edits[r.Request] != nil {
+		// One CDI ID per request: injecting the same device twice would
+		// duplicate its env, mounts and hook.
+		if edits[r.Request] != nil && !seen[r.Request] {
+			seen[r.Request] = true
 			dev.CDIDeviceIDs = []string{CDIDeviceID(c.UID, r.Request)}
 		}
 		res.Devices = append(res.Devices, dev)
