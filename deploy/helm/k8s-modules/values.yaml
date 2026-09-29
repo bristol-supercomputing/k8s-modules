@@ -22,3 +22,6 @@ nri:
   pvcs: []
   discoveryInterval: 10m
   resources: {}
+  # Nodes to run module-nri on. It must be able to mount every claim in
+  # pvcs, so leave out nodes that can't (e.g. without the backing storage).
+  nodeSelector: {}

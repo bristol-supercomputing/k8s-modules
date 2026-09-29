@@ -217,7 +217,9 @@ underneath running pods, prefer an image module once the build settles.
 
 The claim must be in the modules namespace (`modulesNamespace`, default
 `module-system`), have the `ReadOnlyMany` access mode, and be listed in the
-chart's `nri.pvcs`. The `module-nri` DaemonSet mounts every listed claim.
+chart's `nri.pvcs`. The `module-nri` DaemonSet mounts every listed claim,
+so on nodes that can't mount one, its pod never starts; keep it off those
+nodes with `nri.nodeSelector`.
 
 ```yaml
 apiVersion: v1
