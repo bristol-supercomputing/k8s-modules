@@ -1,5 +1,4 @@
-// Command module-nri is the module system's NRI plugin. It runs as a
-// DaemonSet on every node.
+// Command module-nri is the module system's node agent: a DRA kubelet plugin that publishes module devices and writes their CDI specs, and an NRI plugin that orders LD_LIBRARY_PATH and applies masks. It runs as a DaemonSet on every node.
 package main
 
 import (
@@ -15,14 +14,17 @@ import (
 	"github.com/containerd/nri/pkg/stub"
 	"github.com/go-logr/logr"
 	kruntime "k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	toolscache "k8s.io/client-go/tools/cache"
+	"k8s.io/dynamic-resource-allocation/kubeletplugin"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	v1 "github.com/isambard-sc/k8s-modules/api/v1alpha1"
+	"github.com/isambard-sc/k8s-modules/internal/dra"
 	"github.com/isambard-sc/k8s-modules/internal/nri"
 )
 
@@ -35,8 +37,8 @@ func main() {
 		return
 	}
 	var (
-		nodeName, podUID, hostRoot, hookPath, pvcDir, pvcs, socket, idx string
-		interval                                                        time.Duration
+		nodeName, podUID, hostRoot, hookPath, pvcDir, pvcs, socket, idx, cdiDir string
+		interval                                                                time.Duration
 	)
 	flag.StringVar(&nodeName, "node-name", os.Getenv("NODE_NAME"), "This node's name.")
 	flag.StringVar(&podUID, "pod-uid", os.Getenv("POD_UID"), "This pod's UID, to pick our own PVC mounts.")
@@ -46,6 +48,7 @@ func main() {
 	flag.StringVar(&pvcs, "pvcs", "", "Comma-separated claims mounted under --pvc-dir.")
 	flag.StringVar(&socket, "nri-socket", "/var/run/nri/nri.sock", "NRI socket.")
 	flag.StringVar(&idx, "plugin-index", "50", "NRI plugin index.")
+	flag.StringVar(&cdiDir, "cdi-dir", "/var/run/cdi", "Directory for this driver's CDI specs.")
 	flag.DurationVar(&interval, "discovery-interval", 10*time.Minute, "Host module rediscovery interval.")
 	opts := zap.Options{}
 	opts.BindFlags(flag.CommandLine)
@@ -56,13 +59,13 @@ func main() {
 		log.Error(nil, "--node-name or NODE_NAME is required")
 		os.Exit(1)
 	}
-	if err := run(log, nodeName, podUID, hostRoot, hookPath, pvcDir, pvcs, socket, idx, interval); err != nil {
+	if err := run(log, nodeName, podUID, hostRoot, hookPath, pvcDir, pvcs, socket, idx, cdiDir, interval); err != nil {
 		log.Error(err, "exiting")
 		os.Exit(1)
 	}
 }
 
-func run(log logr.Logger, nodeName, podUID, hostRoot, hookPath, pvcDir, pvcs, socket, idx string, interval time.Duration) error {
+func run(log logr.Logger, nodeName, podUID, hostRoot, hookPath, pvcDir, pvcs, socket, idx, cdiDir string, interval time.Duration) error {
 	ctx := ctrl.SetupSignalHandler()
 	cfg := ctrl.GetConfigOrDie()
 	scheme := kruntime.NewScheme()
@@ -90,9 +93,19 @@ func run(log logr.Logger, nodeName, podUID, hostRoot, hookPath, pvcDir, pvcs, so
 	if err != nil {
 		return err
 	}
+	sliceTrigger := make(chan struct{}, 1)
+	pokeSlices := func() {
+		select {
+		case sliceTrigger <- struct{}{}:
+		default:
+		}
+	}
+	// Discovery only cares about host Modules being added or removed; the
+	// driver's devices change with any Module change (status, default label).
 	if _, err := inf.AddEventHandler(toolscache.ResourceEventHandlerFuncs{
-		AddFunc:    poke,
-		DeleteFunc: func(obj any) { poke(nil) },
+		AddFunc:    func(obj any) { poke(obj); pokeSlices() },
+		UpdateFunc: func(_, _ any) { pokeSlices() },
+		DeleteFunc: func(obj any) { poke(nil); pokeSlices() },
 	}); err != nil {
 		return err
 	}
@@ -107,7 +120,7 @@ func run(log logr.Logger, nodeName, podUID, hostRoot, hookPath, pvcDir, pvcs, so
 
 	state := &nri.HostState{}
 	d := &nri.Discoverer{HostRoot: hostRoot, Arch: runtime.GOARCH, NodeName: nodeName,
-		Reader: modules, Writer: writer, State: state, Log: log}
+		Reader: modules, Writer: writer, State: state, Log: log, OnUpdate: pokeSlices}
 	if err := d.RunOnce(ctx); err != nil {
 		log.Error(err, "initial discovery")
 	}
@@ -119,14 +132,36 @@ func run(log logr.Logger, nodeName, podUID, hostRoot, hookPath, pvcDir, pvcs, so
 			claims[c] = true
 		}
 	}
-	p := &nri.Plugin{Log: log, Adjuster: &nri.Adjuster{
-		Catalogue: nri.CacheCatalogue{Reader: modules},
-		Hosts:     state,
-		PVCs: &nri.MountinfoPVCs{Claims: claims, Dir: pvcDir,
-			SelfMountinfo: "/proc/self/mountinfo", HostMountinfo: filepath.Join(hostRoot, "proc/1/mountinfo"), PodUID: podUID},
-		NodeName: nodeName,
-		HookPath: hookPath,
-	}}
+	cat := nri.CacheCatalogue{Reader: modules}
+	pvcPaths := &nri.MountinfoPVCs{Claims: claims, Dir: pvcDir,
+		SelfMountinfo: "/proc/self/mountinfo", HostMountinfo: filepath.Join(hostRoot, "proc/1/mountinfo"), PodUID: podUID}
+
+	cs, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(cdiDir, 0o755); err != nil {
+		return fmt.Errorf("creating CDI directory: %w", err)
+	}
+	driver := &dra.Driver{
+		Planner: &dra.Planner{Catalogue: cat, Hosts: state, PVCs: pvcPaths, NodeName: nodeName, HookPath: hookPath},
+		Pods:    dra.ClientsetPods{Client: cs},
+		CDIDir:  cdiDir,
+		Log:     log.WithName("dra"),
+	}
+	helper, err := kubeletplugin.Start(ctx, driver,
+		kubeletplugin.DriverName(v1.DriverName),
+		kubeletplugin.KubeClient(cs),
+		kubeletplugin.NodeName(nodeName))
+	if err != nil {
+		return fmt.Errorf("starting DRA kubelet plugin: %w", err)
+	}
+	defer helper.Stop()
+	pub := &dra.Publisher{Pool: nodeName, Catalogue: cat, Hosts: state, PVCs: pvcPaths,
+		Publish: helper.PublishResources, Debounce: time.Second, Log: log.WithName("slices")}
+	go pub.Run(ctx, sliceTrigger)
+
+	p := &nri.Plugin{Log: log}
 	s, err := stub.New(p, stub.WithPluginName(v1.NRIPluginName), stub.WithPluginIdx(idx), stub.WithSocketPath(socket))
 	if err != nil {
 		return err

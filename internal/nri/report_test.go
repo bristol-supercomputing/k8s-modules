@@ -1,8 +1,15 @@
 package nri
 
 import (
+	"context"
 	"reflect"
 	"testing"
+
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	kruntime "k8s.io/apimachinery/pkg/runtime"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	v1 "github.com/isambard-sc/k8s-modules/api/v1alpha1"
 	"github.com/isambard-sc/k8s-modules/internal/discovery"
@@ -35,5 +42,30 @@ func TestHostState(t *testing.T) {
 	s.Set(map[string]discovery.Result{"x": {Ready: true}})
 	if r, ok := s.HostModule("x"); !ok || !r.Ready {
 		t.Error("state lookup")
+	}
+}
+
+func TestDiscovererCallsOnUpdate(t *testing.T) {
+	scheme := kruntime.NewScheme()
+	if err := clientgoscheme.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := v1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	c := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(&corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "n1"}}).
+		WithStatusSubresource(&v1.ModuleNodeReport{}).Build()
+	// An empty host root has no ld.so.cache; discovery then records that
+	// per module and still updates State.
+	d := &Discoverer{HostRoot: t.TempDir(), Arch: "arm64", NodeName: "n1",
+		Reader: c, Writer: c, State: &HostState{}}
+	calls := 0
+	d.OnUpdate = func() { calls++ }
+	if err := d.RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Errorf("OnUpdate called %d times, want 1", calls)
 	}
 }

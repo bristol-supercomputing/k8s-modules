@@ -19,3 +19,12 @@ func (c CacheCatalogue) Module(name string) (*v1.Module, bool) {
 	}
 	return m, true
 }
+
+// List returns every Module in the cache; nil if the cache can't be read.
+func (c CacheCatalogue) List() []v1.Module {
+	var l v1.ModuleList
+	if err := c.Reader.List(context.Background(), &l); err != nil {
+		return nil
+	}
+	return l.Items
+}

@@ -151,3 +151,6 @@ func readMountInfo(file string) ([]MountInfo, error) {
 	}
 	return ParseMountInfo(data)
 }
+
+// Mounted reports whether module-nri mounts claim (it is in nri.pvcs).
+func (p *MountinfoPVCs) Mounted(claim string) bool { return p.Claims[claim] }

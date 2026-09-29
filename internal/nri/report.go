@@ -50,6 +50,9 @@ type Discoverer struct {
 	Writer                   client.Client // direct client, for the report
 	State                    *HostState
 	Log                      logr.Logger
+	// OnUpdate, if set, runs after each discovery run updates State, so the
+	// DRA driver can republish device readiness.
+	OnUpdate func()
 }
 
 func (d *Discoverer) RunOnce(ctx context.Context) error {
@@ -71,6 +74,9 @@ func (d *Discoverer) RunOnce(ctx context.Context) error {
 		results[m.Name] = host.Discover(h.Discover.Roots, h.PreferHost)
 	}
 	d.State.Set(results)
+	if d.OnUpdate != nil {
+		d.OnUpdate()
+	}
 	return d.writeReport(ctx, BuildReport(list.Items, results))
 }
 
