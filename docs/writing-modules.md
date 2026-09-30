@@ -45,8 +45,10 @@ This guide covers the three ways to provide a module's files:
 
 2. **Admission** looks up each requested Module and its resolved dependency
    closure. For image modules, it adds an image volume and a read-only mount
-   to the requesting container. A family request is rewritten to the exact
-   default version. Admission also adds the module's `env.set` variables and
+   to the requesting container. A `load` entry is turned into an exact limit. A family limit stays a family
+   limit; admission records the default version it resolved to in the pod's
+   `resolved.modules.isambard.ac.uk/<family>` annotation, so the driver can
+   check it later. Admission also adds the module's `env.set` variables and
    annotations that record exactly what was loaded. It rejects the pod if a
    module is unknown, unresolved, not permitted in the namespace, or conflicts
    with another loaded module.
