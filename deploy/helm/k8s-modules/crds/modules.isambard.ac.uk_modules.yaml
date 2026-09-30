@@ -183,9 +183,15 @@ spec:
                   rule: '[has(self.image), has(self.host), has(self.pvc)].filter(x,
                     x).size() == 1'
               version:
+                description: |-
+                  A version ending in .family would give the Module the DeviceClass
+                  name of family <family>-<version minus .family>.
                 maxLength: 20
                 pattern: ^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?$
                 type: string
+                x-kubernetes-validations:
+                - message: spec.version may not end in .family
+                  rule: '!self.endsWith(''.family'')'
             required:
             - family
             - source

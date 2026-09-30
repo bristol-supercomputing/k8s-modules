@@ -61,6 +61,14 @@ func TestCRDValidation(t *testing.T) {
 			m.Spec.Version = strings.Repeat("1", 21)
 			m.Name = m.Spec.Family + "-" + m.Spec.Version
 		}, "spec.version"},
+		{"version ending in .family", func(m *v1.Module) {
+			m.Spec.Version = "1.family"
+			m.Name = m.Spec.Family + "-" + m.Spec.Version
+		}, "spec.version may not end in .family"},
+		{"version containing family", func(m *v1.Module) {
+			m.Spec.Version = "1.family.2"
+			m.Name = m.Spec.Family + "-" + m.Spec.Version
+		}, ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

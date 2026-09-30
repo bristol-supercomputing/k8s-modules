@@ -67,6 +67,9 @@ type ModuleSpec struct {
 	Family string `json:"family"`
 	// +kubebuilder:validation:MaxLength=20
 	// +kubebuilder:validation:Pattern=`^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?$`
+	// A version ending in .family would give the Module the DeviceClass
+	// name of family <family>-<version minus .family>.
+	// +kubebuilder:validation:XValidation:rule="!self.endsWith('.family')",message="spec.version may not end in .family"
 	Version string `json:"version"`
 
 	Source ModuleSource `json:"source"`
