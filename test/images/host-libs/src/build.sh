@@ -13,3 +13,9 @@ ln -s libfakefabric.so.1.0.0 "$H/libfakefabric.so.1"
 gcc -shared -fPIC -DFAKEDEP_VARIANT='"image"' -Wl,-soname,libfakedep.so.1 -o "$C/usr/lib/libfakedep.so.1" /src/fakedep.c
 gcc -o "$C/usr/local/bin/fakefabric-check" /src/check.c -L"$H" -l:libfakefabric.so.1 -Wl,-rpath-link,"$H"
 echo secret > "$C/opt/masked/secret"
+# libfakelate lives outside ld.so.conf: the readiness e2e adds its directory
+# to prove pods wait for a host module to become ready.
+L=/out/host/usr/lib/brics-late
+mkdir -p "$L"
+gcc -shared -fPIC -DFAKEDEP_VARIANT='"late"' -Wl,-soname,libfakelate.so.1 -o "$L/libfakelate.so.1.0.0" /src/fakedep.c
+ln -s libfakelate.so.1.0.0 "$L/libfakelate.so.1"

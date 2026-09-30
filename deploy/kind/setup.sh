@@ -43,10 +43,13 @@ $CONTAINER_CLI build $BUILD_ARGS --target host-libs -t localhost/brics-host-libs
 LIBS=$(mktemp -d)
 CID=$($CONTAINER_CLI create localhost/brics-host-libs:dev /none)
 $CONTAINER_CLI cp "$CID:/usr/lib/brics-test" "$LIBS/"
+$CONTAINER_CLI cp "$CID:/usr/lib/brics-late" "$LIBS/"
 $CONTAINER_CLI rm "$CID" >/dev/null
 for node in $(kind get nodes --name "$CLUSTER"); do
   $CONTAINER_CLI exec "$node" rm -rf /usr/lib/brics-test
   $CONTAINER_CLI cp "$LIBS/brics-test" "$node:/usr/lib/brics-test"
+  $CONTAINER_CLI exec "$node" rm -rf /usr/lib/brics-late /etc/ld.so.conf.d/brics-late.conf
+  $CONTAINER_CLI cp "$LIBS/brics-late" "$node:/usr/lib/brics-late"
   echo /usr/lib/brics-test | $CONTAINER_CLI exec -i "$node" tee /etc/ld.so.conf.d/brics-test.conf >/dev/null
   $CONTAINER_CLI exec "$node" ldconfig
   $CONTAINER_CLI exec "$node" sh -c 'mkdir -p /var/lib/brics-test/pvc/lib && echo stub > /var/lib/brics-test/pvc/lib/libpvc.so'
@@ -78,6 +81,8 @@ done
 step "3. install chart"
 kubectl create namespace module-system --dry-run=client -o yaml | kubectl apply -f -
 kubectl apply -f "$ROOT/deploy/kind/pv-spack-apps.yaml"
+# helm installs crds/ once and never upgrades it, so apply them ourselves.
+kubectl apply --server-side --force-conflicts -f "$ROOT/deploy/helm/k8s-modules/crds"
 helm upgrade --install k8s-modules "$ROOT/deploy/helm/k8s-modules" \
   --namespace module-system \
   --set image.repository="${REG_NAME}:5000/module-controller" \
@@ -85,6 +90,7 @@ helm upgrade --install k8s-modules "$ROOT/deploy/helm/k8s-modules" \
   --set nri.image.repository="${REG_NAME}:5000/module-nri" \
   --set nri.image.tag=dev --set nri.image.pullPolicy=Always \
   --set "nri.pvcs={spack-apps}" \
+  --set nri.discoveryInterval=15s \
   --set "registryAllowlist={${REG_NAME}:5000/modules/}" \
   --wait --timeout 3m
 kubectl -n module-system rollout restart deployment/module-controller daemonset/module-nri
@@ -112,5 +118,5 @@ spec:
     set:
       NCCL_DEBUG: WARN
 EOF
-kubectl wait module/nccl-2.29.2 --for=condition=Resolved --timeout=2m
+kubectl wait modules.modules.isambard.ac.uk/nccl-2.29.2 --for=condition=Resolved --timeout=2m
 echo "ready: kubectl --context kind-$CLUSTER get modules"

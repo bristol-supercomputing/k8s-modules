@@ -54,6 +54,9 @@ spec:
         volumeMounts:
         - {name: nri-socket, mountPath: /var/run/nri}
         - {name: host-root, mountPath: /host, readOnly: true, mountPropagation: HostToContainer}
+        - {name: kubelet-plugin, mountPath: /var/lib/kubelet/plugins/modules.isambard.ac.uk}
+        - {name: kubelet-registry, mountPath: /var/lib/kubelet/plugins_registry}
+        - {name: cdi, mountPath: /var/run/cdi}
         {{- range $i, $claim := .Values.nri.pvcs }}
         - {name: pvc-{{ $i }}, mountPath: /pvcs/{{ $claim }}, readOnly: true}
         {{- end }}
@@ -61,6 +64,10 @@ spec:
       - {name: nri-socket, hostPath: {path: /var/run/nri, type: Directory}}
       - {name: host-root, hostPath: {path: /, type: Directory}}
       - {name: hook-dir, hostPath: {path: {{ .Values.nri.hookDir }}, type: DirectoryOrCreate}}
+      # The plugin's socket directory must exist before it starts.
+      - {name: kubelet-plugin, hostPath: {path: /var/lib/kubelet/plugins/modules.isambard.ac.uk, type: DirectoryOrCreate}}
+      - {name: kubelet-registry, hostPath: {path: /var/lib/kubelet/plugins_registry, type: Directory}}
+      - {name: cdi, hostPath: {path: /var/run/cdi, type: DirectoryOrCreate}}
       {{- range $i, $claim := .Values.nri.pvcs }}
       - {name: pvc-{{ $i }}, persistentVolumeClaim: {claimName: {{ $claim }}, readOnly: true}}
       {{- end }}
