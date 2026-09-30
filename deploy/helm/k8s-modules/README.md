@@ -44,6 +44,10 @@ you. The controller creates a DeviceClass per Module and per family.
 - Init containers can't request modules.
 - The `modules.isambard.ac.uk/host-<family>` node labels and
   `ModuleNodeReport` still exist, but scheduling no longer needs them.
+- `module-nri`'s RBAC allows writing ResourceSlices, but an admission policy
+  (`templates/admission-resourceslices.yaml`) confines it to slices of the
+  `modules.isambard.ac.uk` driver on its own node, taken from its node-bound
+  service account token.
 
 ## Limits
 
@@ -58,3 +62,34 @@ you. The controller creates a DeviceClass per Module and per family.
 - Pods that load modules carry `required-plugins.noderesource.dev/pod:
   '["modules"]'` and may not set any other `required-plugins.noderesource.dev`
   annotation (a container-scoped one would override it).
+
+## Upgrading
+
+Pods admitted before the module system moved to DRA carry the
+`modules.isambard.ac.uk/containers` annotation and no ResourceClaim, so the
+new `module-nri` can't give them their host and PVC modules. It refuses
+their containers instead (`pod was admitted by an older module system`),
+so they fail when a container restarts. After upgrading from such a
+version, recreate every pod that loads modules, for example with
+`kubectl rollout restart` on its workload.
+
+## Uninstalling
+
+`helm uninstall` leaves behind the DeviceClasses the controller created and
+the CDI specs `module-nri` wrote under `/var/run/cdi` on each node. Remove
+the DeviceClasses with:
+
+```bash
+kubectl delete deviceclass -l modules.isambard.ac.uk/managed=true
+```
+
+and, if needed, the files `/var/run/cdi/modules.isambard.ac.uk-*.json` on
+each node.
+
+## Troubleshooting
+
+- Pods start but lack their `host` or `pvc` modules (no files under the
+  module's mount, no `module-hook` run): containerd's CDI support is off.
+  Check that `enable_cdi` is `true` and `cdi_spec_dirs` includes
+  `/var/run/cdi` under `[plugins."io.containerd.cri.v1.runtime"]` (both are
+  the default in containerd 2).

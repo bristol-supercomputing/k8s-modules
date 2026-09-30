@@ -43,6 +43,13 @@ This guide covers the three ways to provide a module's files:
    `load-containers` needs `load`, must name containers that exist, and can't
    be changed after the pod is created.
 
+   A pod may have at most 32 module limits in total, counting one per
+   container and module (a `load` entry counts once for every container it
+   is added to). The scheduler puts them all in one ResourceClaim, which
+   holds at most 32 requests, and that claim also holds any other
+   DRA-backed extended resources the pod asks for (for example GPUs), so the
+   practical limit is lower when you combine them.
+
 2. **Admission** looks up each requested Module and its resolved dependency
    closure. For image modules, it adds an image volume and a read-only mount
    to the requesting container. A `load` entry is turned into an exact limit. A family limit stays a family
@@ -309,8 +316,10 @@ spec:
 
 If the claim is missing or isn't ReadOnlyMany, the Module stays
 `Resolved=False/PVCInvalid`. If the claim isn't in `nri.pvcs`, the module
-is not published on any node, so pods that request it stay `Pending`
-(`pvc claim <name> is not mounted by module-nri; add it to nri.pvcs`).
+is not published on any node, so pods that request it stay `Pending` with a
+`FailedScheduling` event. `module-nri`'s log on each node names the reason
+(`module not published on this node` with `pvc claim <name> is not mounted
+by module-nri`).
 
 ---
 
@@ -388,7 +397,8 @@ remain for inspection.
 If a host module stops being ready after the pod is scheduled, the pod stays
 `ContainerCreating` with `host module <name> is not available on node <node>:
 <reason>`. If it isn't ready on any node, the pod stays `Pending` with a
-`FailedScheduling` event.
+`FailedScheduling` event, and `module-nri`'s log on each node says why the
+module is not published there.
 
 ---
 
@@ -403,5 +413,6 @@ If a host module stops being ready after the pod is scheduled, the pod stays
 | `env.set name X must start with one of …` | Rename the variable, or add its prefix to `envPrefixAllowlist` |
 | `module "X" is already the default for family "f"` | Remove the default label from the old version first |
 | `required plugin "modules" not present` | `module-nri` isn't running on that node; the pod fails closed rather than starting without its modules |
-| `FailedScheduling … cannot allocate all claims` | No node can run every requested module: a host module isn't ready anywhere, or a PVC module's claim isn't in `nri.pvcs` |
+| `FailedScheduling … cannot allocate all claims` | No node can run every requested module: a host module isn't ready anywhere, or a PVC module's claim isn't in `nri.pvcs`. `module-nri`'s log (`module not published on this node`) gives the reason per node |
+| `a pod may have at most 32 module resource limits across its containers` | Request fewer modules, or put them on fewer containers; each (container, module) pair counts |
 | `default for family X changed from A to B after admission; recreate the pod` | The family's default label moved before the pod was scheduled; delete and recreate the pod |
