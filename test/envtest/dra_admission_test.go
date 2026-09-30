@@ -255,6 +255,39 @@ func TestAdmissionLoadCap(t *testing.T) {
 	reject(t, func() *corev1.Pod { return newPod(ns, strings.Join(many, ",")) }, "more than 32 modules")
 }
 
+// Each (container, module limit) pair is one request of the scheduler's
+// ResourceClaim, which holds at most 32.
+func TestAdmissionLimitCap(t *testing.T) {
+	var limits []string
+	for range 4 {
+		m := imageModule(newFamily("lcap"), "1")
+		create(t, m)
+		waitResolved(t, m.Name)
+		limits = append(limits, resolve.ResourceName(m.Name))
+	}
+	ns := newNamespace(t, nil)
+	pod := func(modules, containers int) func() *corev1.Pod {
+		return func() *corev1.Pod {
+			cs := make([]corev1.Container, containers)
+			for i := range cs {
+				cs[i] = ctrWith(fmt.Sprintf("c%d", i), limits[:modules]...)
+			}
+			return newPod(ns, "", cs...)
+		}
+	}
+	admit(t, pod(4, 8), func(p *corev1.Pod) error {
+		for _, c := range p.Spec.Containers {
+			for _, l := range limits {
+				if !limitOne(c, l) {
+					return fmt.Errorf("container %s lacks %s: %+v", c.Name, l, c.Resources)
+				}
+			}
+		}
+		return nil
+	})
+	reject(t, pod(3, 11), "at most 32 module resource limits")
+}
+
 // forged builds a pod carrying genuine resolved annotations and the
 // required-plugins annotation, so only pod-consistency can deny it.
 func forged(ns string, anns map[string]string, containers ...corev1.Container) func() *corev1.Pod {
