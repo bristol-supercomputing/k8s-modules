@@ -1,0 +1,40 @@
+# Module devices are only requested through container limits, which the pod
+# policies check for access and conflicts; the scheduler turns those limits
+# into a claim of its own. A user's own claim for a module class would skip
+# those checks, so it is denied.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: resourceclaims.modules.isambard.ac.uk
+  labels: {{- include "k8s-modules.labels" . | nindent 4 }}
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    matchPolicy: Equivalent
+    resourceRules:
+    - {apiGroups: [resource.k8s.io], apiVersions: [v1], operations: [CREATE], resources: [resourceclaims, resourceclaimtemplates]}
+  variables:
+  - name: requests
+    expression: >-
+      request.resource.resource == 'resourceclaims' ?
+        (has(object.spec.devices) && has(object.spec.devices.requests) ? object.spec.devices.requests : []) :
+        (has(object.spec.spec.devices) && has(object.spec.spec.devices.requests) ? object.spec.spec.devices.requests : [])
+  - name: usesModules
+    expression: >-
+      variables.requests.exists(r,
+        (has(r.exactly) && r.exactly.deviceClassName.endsWith('.modules.isambard.ac.uk')) ||
+        (has(r.firstAvailable) && r.firstAvailable.exists(s, s.deviceClassName.endsWith('.modules.isambard.ac.uk'))))
+  validations:
+  - expression: >-
+      !variables.usesModules ||
+      (request.resource.resource == 'resourceclaims' && request.userInfo.username == 'system:kube-scheduler')
+    message: "module device classes (*.modules.isambard.ac.uk) can only be used through container resource limits (modules.isambard.ac.uk/<module> or family.modules.isambard.ac.uk/<family>), not in a ResourceClaim or ResourceClaimTemplate"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: resourceclaims.modules.isambard.ac.uk
+  labels: {{- include "k8s-modules.labels" . | nindent 4 }}
+spec:
+  policyName: resourceclaims.modules.isambard.ac.uk
+  validationActions: [Deny]

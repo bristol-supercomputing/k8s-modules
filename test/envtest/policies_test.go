@@ -10,6 +10,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	resourcev1 "k8s.io/api/resource/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/yaml"
@@ -82,6 +83,13 @@ func waitForPolicies() error {
 			m := imageModule("probe", "2")
 			m.Spec.Source.Image.Reference = "evil.test/x" + digest()
 			return rejected(m), nil
+		}},
+		{"resourceclaims policy", func() (bool, error) {
+			return rejected(&resourcev1.ResourceClaim{
+				ObjectMeta: metav1.ObjectMeta{GenerateName: "probe-", Namespace: probeNS},
+				Spec: resourcev1.ResourceClaimSpec{Devices: resourcev1.DeviceClaim{Requests: []resourcev1.DeviceRequest{{
+					Name: "m", Exactly: &resourcev1.ExactDeviceRequest{DeviceClassName: "probe-1.modules.isambard.ac.uk"}}}}},
+			}), nil
 		}},
 		{"module-default policy", func() (bool, error) { return rejected(imageModule("probe", "3", withDefault())), nil }},
 	}
