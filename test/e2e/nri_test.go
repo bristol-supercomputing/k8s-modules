@@ -11,6 +11,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	resourcev1 "k8s.io/api/resource/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -127,7 +128,10 @@ test -f /opt/modules/e2e-pvc/1/lib/libpvc.so
 ! touch /opt/modules/e2e-pvc/1/x 2>/dev/null`))
 }
 
-func TestNRIFailClosed(t *testing.T) {
+// Without module-nri there is no driver on the node, so module pods stay
+// Pending; `required-plugins` still guards the case where the driver runs but
+// NRI is disconnected.
+func TestDRAFailClosed(t *testing.T) {
 	c := newClient(t)
 	ds := types.NamespacedName{Namespace: "module-system", Name: "module-nri"}
 	setSelector := func(sel map[string]string) {
@@ -168,11 +172,26 @@ func TestNRIFailClosed(t *testing.T) {
 		return nil
 	})
 
-	ns := namespace(t, c, "e2e-nri-closed")
-	p := shellPod(ns, "needs-plugin", "docker.io/library/busybox:1.37", "nccl-2.29.2", "true")
+	// With module-nri gone, the kubelet drops its ResourceSlices, so a pod
+	// that needs a module is never scheduled.
+	waitFor(t, 3*time.Minute, func() error {
+		slices := &resourcev1.ResourceSliceList{}
+		if err := c.List(ctx, slices); err != nil {
+			return err
+		}
+		for _, s := range slices.Items {
+			if s.Spec.Driver == v1.DriverName {
+				return fmt.Errorf("slice %s still present", s.Name)
+			}
+		}
+		return nil
+	})
+
+	ns := namespace(t, c, "e2e-dra-closed")
+	p := shellPod(ns, "needs-driver", "docker.io/library/busybox:1.37", "nccl-2.29.2", "true")
 	waitFor(t, 30*time.Second, func() error { return c.Create(ctx, p) })
 	t.Cleanup(func() { _ = c.Delete(ctx, p) })
-	waitContainerError(t, c, p, `required plugin "modules" not present`)
+	waitFor(t, time.Minute, func() error { return unschedulable(c, p) })
 
 	plain := shellPod(ns, "plain", "docker.io/library/busybox:1.37", "", "true")
 	delete(plain.Annotations, v1.AnnotationLoad)
