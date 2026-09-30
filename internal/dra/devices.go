@@ -42,9 +42,18 @@ func Ready(m *v1.Module, cat Catalogue, hosts HostModules, pvcs PVCs) (bool, str
 // Devices lists one shareable device per Module that is Ready, sorted by
 // name, so the scheduler only places pods where their modules can run.
 func Devices(cat Catalogue, hosts HostModules, pvcs PVCs) []resourceapi.Device {
+	devs, _ := devicesAndUnpublished(cat, hosts, pvcs)
+	return devs
+}
+
+// devicesAndUnpublished is Devices plus the Modules left out, each with the
+// reason Ready gave.
+func devicesAndUnpublished(cat Catalogue, hosts HostModules, pvcs PVCs) ([]resourceapi.Device, map[string]string) {
 	var out []resourceapi.Device
+	unpublished := map[string]string{}
 	for _, m := range cat.List() {
-		if ok, _ := Ready(&m, cat, hosts, pvcs); !ok {
+		if ok, why := Ready(&m, cat, hosts, pvcs); !ok {
+			unpublished[m.Name] = why
 			continue
 		}
 		out = append(out, resourceapi.Device{
@@ -58,7 +67,7 @@ func Devices(cat Catalogue, hosts HostModules, pvcs PVCs) []resourceapi.Device {
 		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
-	return out
+	return out, unpublished
 }
 
 // Resources puts devs in one pool, split into slices of MaxDevicesPerSlice.
