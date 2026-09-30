@@ -2,9 +2,9 @@
 
 A **Module** is a named, versioned bundle of shared libraries (plus optional
 environment variables) that a pod can load. Modules are cluster-scoped
-`modules.isambard.ac.uk/v1alpha1` resources that admins publish. Users load
-them with a pod annotation, the way they would run `module load` on
-Isambard.
+`modules.isambard.ac.uk/v1alpha1` resources that admins publish. Users
+request them in a container's resource limits (or with a pod annotation
+shortcut), the way they would run `module load` on Isambard.
 
 This guide covers the three ways to provide a module's files:
 
@@ -16,24 +16,59 @@ This guide covers the three ways to provide a module's files:
 
 ## How a module reaches a container
 
-1. The user annotates the pod:
+1. A container asks for a module in its resource limits. Only that container
+   gets the module (and everything it depends on):
+
+   ```yaml
+   containers:
+   - name: trainer
+     resources:
+       limits:
+         modules.isambard.ac.uk/aws-ofi-nccl-1.18.0: 1   # an exact module
+         family.modules.isambard.ac.uk/nccl: 1           # a family's default
+   - name: sidecar                                        # gets no modules
+   ```
+
+   The quantity must be exactly `1`. The `load` annotation is a shortcut that
+   adds exact limits to every container, or only to the containers that
+   `load-containers` lists:
 
    ```yaml
    metadata:
      annotations:
-       modules.isambard.ac.uk/load: aws-ofi-nccl-1.18.0   # comma-separated; a family name loads its default
+       modules.isambard.ac.uk/load: aws-ofi-nccl-1.18.0,nccl   # a family name loads its default
+       modules.isambard.ac.uk/load-containers: trainer          # optional
    ```
 
-2. **Admission** looks up the Module and its resolved dependency closure. For
-   image modules, it adds an image volume and a read-only mount to every
-   container in `spec.containers`. It also adds the module's `env.set`
-   variables and annotations that record exactly what was loaded. It rejects
-   the pod if a module is unknown, unresolved, not permitted in the
-   namespace, or conflicts with another loaded module.
-3. **module-nri**, the node plugin, runs when each container is created. It
-   prepends every module's library directories to `LD_LIBRARY_PATH` (ahead
-   of the image's own value) and sets `BRICS_MODULES`. It also binds `pvc`
-   and `host` module files and applies `maskPaths`.
+   `load-containers` needs `load`, must name containers that exist, and can't
+   be changed after the pod is created.
+
+2. **Admission** looks up each requested Module and its resolved dependency
+   closure. For image modules, it adds an image volume and a read-only mount
+   to the requesting container. A family request is rewritten to the exact
+   default version. Admission also adds the module's `env.set` variables and
+   annotations that record exactly what was loaded. It rejects the pod if a
+   module is unknown, unresolved, not permitted in the namespace, or conflicts
+   with another loaded module.
+3. **The scheduler** places the pod only on nodes where every requested
+   module, including its whole dependency closure, can run. A host module
+   must have been discovered ready on the node, and a PVC module's claim must
+   be mounted by `module-nri`. Host modules therefore no longer need a
+   `nodeSelector`.
+4. **module-nri**, the node plugin, is also a DRA kubelet plugin. It publishes
+   one shareable device per ready Module on each node. When a container
+   starts, it writes CDI edits that bind `pvc` and `host` module files and
+   set `BRICS_MODULE_*` markers. Its NRI side then reads the markers,
+   prepends every module's library directories to `LD_LIBRARY_PATH` (ahead of
+   the image's own value, in rank order), sets `BRICS_MODULES` and applies
+   `maskPaths`.
+
+Behind the limits, the controller creates a DeviceClass for every Module and
+for every family. Modules are only requested through the limits above: users
+can't create their own ResourceClaims or ResourceClaimTemplates for module
+device classes, and the implicit
+`deviceclass.resource.kubernetes.io/<class>.modules.isambard.ac.uk` resource
+names are rejected too.
 
 Every module is mounted read-only at a fixed path:
 
@@ -41,7 +76,13 @@ Every module is mounted read-only at a fixed path:
 /opt/modules/<family>/<version>
 ```
 
-Init and ephemeral containers do not get modules.
+Init containers can't request modules (the pod is rejected), and ephemeral
+containers don't get them.
+
+A pod that requested a family default is tied to the version chosen at
+admission. If the `default` label moves before the pod is scheduled, the pod
+fails to start with `default for family X changed from A to B after admission;
+recreate the pod`, so delete the pod and create it again.
 
 ## Fields common to every module
 
@@ -52,7 +93,7 @@ metadata:
   name: nccl-2.29.2               # must be <family>-<version>
   labels:
     modules.isambard.ac.uk/family: nccl
-    modules.isambard.ac.uk/default: "true"   # optional: `load: nccl` picks this one (one per family)
+    modules.isambard.ac.uk/default: "true"   # optional: a `nccl` family request picks this one (one per family)
 spec:
   family: nccl                    # [a-z0-9-], at most 40 chars
   version: 2.29.2                 # at most 20 chars; keep it lowercase, since the name must be a DNS name
@@ -71,7 +112,7 @@ spec:
 Rules to keep in mind:
 
 - **`spec` is immutable.** To change a module, publish a new version. To
-  change which version `load: <family>` picks, move the
+  change which version a family request picks, move the
   `modules.isambard.ac.uk/default` label (the one mutable part).
 - **`env.set` names must start with a prefix in `envPrefixAllowlist`.** The
   defaults are `NCCL_`, `FI_`, `CXIP_`, `UCX_` and `OMPI_`.
@@ -265,9 +306,9 @@ spec:
 ```
 
 If the claim is missing or isn't ReadOnlyMany, the Module stays
-`Resolved=False/PVCInvalid`. If the claim isn't in `nri.pvcs`, containers
-fail with `pvc claim <name> is not mounted by module-nri; add it to
-nri.pvcs`.
+`Resolved=False/PVCInvalid`. If the claim isn't in `nri.pvcs`, the module
+is not published on any node, so pods that request it stay `Pending`
+(`pvc claim <name> is not mounted by module-nri; add it to nri.pvcs`).
 
 ---
 
@@ -336,17 +377,16 @@ kubectl get modulenodereports
 kubectl get modulenodereport <node> -o yaml     # closure, hashes, glibc floor, missing sonames
 ```
 
-Nodes where a host module's full closure was found get a label, which pods
-can use to schedule only onto nodes that have the libraries:
+Nodes where a host module's full closure was found also get a
+`modules.isambard.ac.uk/host-<family>: "true"` label. The scheduler no longer
+needs it: a pod that requests a host module is only placed on nodes where the
+module is ready, so no `nodeSelector` is required. The labels and the reports
+remain for inspection.
 
-```yaml
-spec:
-  nodeSelector:
-    modules.isambard.ac.uk/host-libfabric: "true"
-```
-
-On a node where the module isn't ready, containers that load it fail with
-`host module <name> is not available on node <node>: <reason>`.
+If a host module stops being ready after the pod is scheduled, the pod stays
+`ContainerCreating` with `host module <name> is not available on node <node>:
+<reason>`. If it isn't ready on any node, the pod stays `Pending` with a
+`FailedScheduling` event.
 
 ---
 
@@ -361,3 +401,5 @@ On a node where the module isn't ready, containers that load it fail with
 | `env.set name X must start with one of …` | Rename the variable, or add its prefix to `envPrefixAllowlist` |
 | `module "X" is already the default for family "f"` | Remove the default label from the old version first |
 | `required plugin "modules" not present` | `module-nri` isn't running on that node; the pod fails closed rather than starting without its modules |
+| `FailedScheduling … cannot allocate all claims` | No node can run every requested module: a host module isn't ready anywhere, or a PVC module's claim isn't in `nri.pvcs` |
+| `default for family X changed from A to B after admission; recreate the pod` | The family's default label moved before the pod was scheduled; delete and recreate the pod |
