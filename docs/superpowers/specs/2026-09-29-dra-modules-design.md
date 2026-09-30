@@ -188,6 +188,13 @@ A container that doesn't request the param is left alone. The
   - A ResourceClaimTemplate that uses such a class is always denied.
   - This stops users getting a module through a claim of their own, which
     would bypass namespace access.
+  - A second, pod-side policy (`podclasses`) rejects resource keys
+    `deviceclass.resource.kubernetes.io/<class>.modules.isambard.ac.uk`
+    (the implicit DeviceClass extended-resource names) in container,
+    initContainer and pod-level limits and requests. Without it they reach
+    the scheduler, whose claim the guard lets through, bypassing the pod
+    policies. Independently, the driver's prepare refuses any claim that is
+    not the pod's `status.extendedResourceClaimStatus.resourceClaimName`.
 
 ### Driver: slices
 

@@ -11,6 +11,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	resourcev1 "k8s.io/api/resource/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/yaml"
@@ -90,6 +91,11 @@ func waitForPolicies() error {
 				Spec: resourcev1.ResourceClaimSpec{Devices: resourcev1.DeviceClaim{Requests: []resourcev1.DeviceRequest{{
 					Name: "m", Exactly: &resourcev1.ExactDeviceRequest{DeviceClassName: "probe-1.modules.isambard.ac.uk"}}}}},
 			}), nil
+		}},
+		{"podclasses policy", func() (bool, error) {
+			p := probePod(nil)
+			p.Spec.Containers[0].Resources.Limits = corev1.ResourceList{"deviceclass.resource.kubernetes.io/probe-1.modules.isambard.ac.uk": resource.MustParse("1")}
+			return rejected(p), nil
 		}},
 		{"module-default policy", func() (bool, error) { return rejected(imageModule("probe", "3", withDefault())), nil }},
 	}

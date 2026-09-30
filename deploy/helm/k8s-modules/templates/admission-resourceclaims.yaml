@@ -38,3 +38,43 @@ metadata:
 spec:
   policyName: resourceclaims.modules.isambard.ac.uk
   validationActions: [Deny]
+---
+# Every DeviceClass can also be requested through the implicit extended
+# resource name deviceclass.resource.kubernetes.io/<class>. The pod policies
+# only look at the modules.isambard.ac.uk/ and family.modules.isambard.ac.uk/
+# keys, so such a key would reach the scheduler, whose claim the guard above
+# lets through. Deny the implicit names for module classes outright.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: podclasses.modules.isambard.ac.uk
+  labels: {{- include "k8s-modules.labels" . | nindent 4 }}
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    {{- include "k8s-modules.podPolicyNamespaces" . | nindent 4 }}
+    resourceRules:
+    - {apiGroups: [""], apiVersions: [v1], operations: [CREATE], resources: [pods]}
+  variables:
+  - name: lists
+    expression: >-
+      (object.spec.containers + (has(object.spec.initContainers) ? object.spec.initContainers : []))
+        .map(c, has(c.resources) ? c.resources : null).filter(r, r != null)
+        .map(r, [has(r.limits) ? r.limits : {}, has(r.requests) ? r.requests : {}]).flatten() +
+      (has(object.spec.resources) ? [
+        has(object.spec.resources.limits) ? object.spec.resources.limits : {},
+        has(object.spec.resources.requests) ? object.spec.resources.requests : {}] : [])
+  validations:
+  - expression: >-
+      !variables.lists.exists(l, l.exists(k,
+        k.startsWith('deviceclass.resource.kubernetes.io/') && k.endsWith('.modules.isambard.ac.uk')))
+    message: "module device classes (*.modules.isambard.ac.uk) can only be requested through container limits modules.isambard.ac.uk/<module> or family.modules.isambard.ac.uk/<family>, not through deviceclass.resource.kubernetes.io/ resource names"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: podclasses.modules.isambard.ac.uk
+  labels: {{- include "k8s-modules.labels" . | nindent 4 }}
+spec:
+  policyName: podclasses.modules.isambard.ac.uk
+  validationActions: [Deny]
