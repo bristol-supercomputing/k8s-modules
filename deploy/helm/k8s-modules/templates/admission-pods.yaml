@@ -71,8 +71,14 @@ spec:
   - name: loadContainers
     expression: "'modules.isambard.ac.uk/load-containers' in variables.anns ? variables.anns['modules.isambard.ac.uk/load-containers'].split(',').map(s, s.trim()).filter(s, s != '') : []"
   validations:
-  - expression: "request.operation != 'CREATE' || variables.requested.size() <= 32"
-    message: "a pod requests more than 32 modules (modules.isambard.ac.uk/load plus container limits)"
+  # Two caps: validation runs after mutation, so every applied load module is
+  # already an exact limit on each selected container and a combined count
+  # would count it twice. limitKeys has one entry per (container, module
+  # resource), the requests of the scheduler's ResourceClaim.
+  - expression: "request.operation != 'CREATE' || variables.loadNames.size() <= 32"
+    message: "modules.isambard.ac.uk/load lists more than 32 modules"
+  - expression: "request.operation != 'CREATE' || variables.limitKeys.size() <= 32"
+    message: "a pod may have at most 32 module resource limits across its containers (modules.isambard.ac.uk/load adds one per selected container)"
   # Before the unknown check: a bad load-containers makes load select no
   # container, which would otherwise surface as "was not loaded".
   - expression: >-

@@ -2,10 +2,12 @@ package integration
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	v1 "github.com/isambard-sc/k8s-modules/api/v1alpha1"
 	"github.com/isambard-sc/k8s-modules/internal/resolve"
@@ -223,4 +225,74 @@ func TestAdmissionAccessViaLimit(t *testing.T) {
 	ns := newNamespace(t, map[string]string{"team": "b"})
 	reject(t, func() *corev1.Pod { return newPod(ns, "", ctrWith("a", resolve.ResourceName(m.Name))) },
 		"not permitted in namespace", "was not loaded")
+}
+
+// Validation runs after mutation, so each applied load module is also an
+// exact limit; the load cap must not count it twice.
+func TestAdmissionLoadCap(t *testing.T) {
+	names := make([]string, 17)
+	for i := range names {
+		m := imageModule(newFamily("cap"), "1")
+		create(t, m)
+		names[i] = m.Name
+	}
+	for _, n := range names {
+		waitResolved(t, n)
+	}
+	ns := newNamespace(t, nil)
+	admit(t, func() *corev1.Pod { return newPod(ns, strings.Join(names, ",")) }, func(p *corev1.Pod) error {
+		for _, n := range names {
+			if !limitOne(container(p, "main"), resolve.ResourceName(n)) {
+				return fmt.Errorf("main lacks the limit for %s: %+v", n, container(p, "main").Resources)
+			}
+		}
+		return nil
+	})
+	many := make([]string, 33)
+	for i := range many {
+		many[i] = fmt.Sprintf("capm%d", i)
+	}
+	reject(t, func() *corev1.Pod { return newPod(ns, strings.Join(many, ",")) }, "more than 32 modules")
+}
+
+// forged builds a pod carrying genuine resolved annotations and the
+// required-plugins annotation, so only pod-consistency can deny it.
+func forged(ns string, anns map[string]string, containers ...corev1.Container) func() *corev1.Pod {
+	return func() *corev1.Pod {
+		p := newPod(ns, "", containers...)
+		for k, v := range anns {
+			p.Annotations[k] = v
+		}
+		p.Annotations[v1.AnnotationRequiredPlugins] = v1.RequiredPluginsValue
+		return p
+	}
+}
+
+func TestAdmissionConsistencyFamilyLimitAccess(t *testing.T) {
+	fam := newFamily("cfam")
+	d := imageModule(fam, "1", withDefault(), withAccess(map[string]string{"team": "a"}))
+	e := imageModule(fam, "2")
+	create(t, d)
+	create(t, e)
+	waitResolved(t, d.Name)
+	e = waitResolved(t, e.Name)
+	ns := newNamespace(t, map[string]string{"team": "b"})
+	reject(t, forged(ns, e.Status.Resolved.Annotations, ctrWith("a", resolve.FamilyResourceName(fam))),
+		"not permitted in namespace")
+}
+
+func TestAdmissionConsistencyExactLimitUnresolved(t *testing.T) {
+	fam := newFamily("cunres")
+	u := imageModule(fam, "1", withDeps("missing-9.9"))
+	create(t, u)
+	u = waitCondition(t, u.Name, v1.ConditionResolved, metav1.ConditionFalse, "DependencyNotFound")
+	if u.Status.Resolved != nil {
+		t.Fatalf("unresolved module has status.resolved: %+v", u.Status.Resolved)
+	}
+	// An unresolved Module has no status.resolved.annotations to copy, so
+	// write the value the controller would give it.
+	value := fmt.Sprintf("%s;rank=10;src=image;mount=%s/%s/1", u.Name, v1.MountRoot, fam)
+	ns := newNamespace(t, nil)
+	reject(t, forged(ns, map[string]string{v1.AnnotationResolvedPrefix + fam: value}, ctrWith("a", resolve.ResourceName(u.Name))),
+		"is not resolved")
 }
