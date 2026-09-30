@@ -98,6 +98,18 @@ func waitForPolicies() error {
 			return rejected(p), nil
 		}},
 		{"module-default policy", func() (bool, error) { return rejected(imageModule("probe", "3", withDefault())), nil }},
+		{"resourceslices policy", func() (bool, error) {
+			c, err := impersonate(moduleNRIUser, "probe-node")
+			if err != nil {
+				return false, err
+			}
+			s := nodeSlice("probe.example.com", "probe-node")
+			if err := c.Create(ctx, s); err != nil {
+				return true, nil
+			}
+			_ = k8s.Delete(ctx, s)
+			return false, nil
+		}},
 	}
 	for _, c := range checks {
 		deadline := time.Now().Add(60 * time.Second)

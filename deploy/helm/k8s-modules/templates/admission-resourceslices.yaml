@@ -1,0 +1,50 @@
+# module-nri's RBAC lets it write any ResourceSlice. The kubelet-plugin
+# helper only writes slices of its own driver, owned by and with
+# spec.nodeName set to its node, so confine module-nri to exactly those.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: module-resourceslices.modules.isambard.ac.uk
+  labels: {{- include "k8s-modules.labels" . | nindent 4 }}
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+    - apiGroups: [resource.k8s.io]
+      apiVersions: ["*"]
+      operations: [CREATE, UPDATE, DELETE]
+      resources: [resourceslices]
+  matchConditions:
+  - name: module-nri
+    expression: "request.userInfo.username == 'system:serviceaccount:{{ .Values.modulesNamespace }}:module-nri'"
+  variables:
+  - name: node
+    expression: >-
+      has(request.userInfo.extra) &&
+      'authentication.kubernetes.io/node-name' in request.userInfo.extra &&
+      size(request.userInfo.extra['authentication.kubernetes.io/node-name']) > 0 ?
+      request.userInfo.extra['authentication.kubernetes.io/node-name'][0] : ''
+  - name: slices
+    expression: >-
+      request.operation == 'CREATE' ? [object] :
+      request.operation == 'DELETE' ? [oldObject] : [oldObject, object]
+  validations:
+  - expression: "variables.node != ''"
+    message: module-nri may only write ResourceSlices with a node-bound service account token
+  - expression: "variables.slices.all(s, s.spec.driver == 'modules.isambard.ac.uk')"
+    message: module-nri may only write ResourceSlices of driver modules.isambard.ac.uk
+  - expression: >-
+      variables.node == '' ||
+      variables.slices.all(s, has(s.spec.nodeName) && s.spec.nodeName == variables.node)
+    messageExpression: >-
+      'module-nri may only write ResourceSlices of its own node (caller is on node ' +
+      variables.node + ')'
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: module-resourceslices.modules.isambard.ac.uk
+  labels: {{- include "k8s-modules.labels" . | nindent 4 }}
+spec:
+  policyName: module-resourceslices.modules.isambard.ac.uk
+  validationActions: [Deny]
