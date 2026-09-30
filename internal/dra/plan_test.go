@@ -242,3 +242,54 @@ func TestPlanDuplicateRequestName(t *testing.T) {
 		seen[m.ContainerPath] = true
 	}
 }
+
+// The family class allocated the default admission recorded.
+func TestPlanFamilyDefault(t *testing.T) {
+	fab := mod("fab", "host", hst)
+	cur := withLib(mod("nccl", "2", img, "fab-host"))
+	c := catalogue(t, mod("nccl", "1", img), cur, fab)
+	claim, pod := claimAndPod(c, req{"main", resolve.FamilyResourceName("nccl"), "nccl-2"})
+	if !strings.HasPrefix(pod.Annotations[resolve.ResolvedAnnotationKey("nccl")], "nccl-2;") {
+		t.Fatalf("fixture: resolved annotation = %q", pod.Annotations[resolve.ResolvedAnnotationKey("nccl")])
+	}
+	out, err := planner(c, fakeHosts{"fab-host": hostResult()}).Plan(claim, pod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := out["container-0-request-0"]
+	if e == nil {
+		t.Fatalf("plan = %+v", out)
+	}
+	env := envMap(e)
+	for _, n := range []string{"nccl-2", "fab-host"} {
+		if !strings.HasPrefix(env[resolve.MarkerKey(n)], n+";") {
+			t.Errorf("marker for %s = %q", n, env[resolve.MarkerKey(n)])
+		}
+	}
+	if _, ok := env[resolve.MarkerKey("nccl-1")]; ok {
+		t.Error("nccl-1 must not be planned")
+	}
+	if mountAt(e, "/opt/modules/fab/host/lib/libfab.so.1") == nil || len(e.Hooks) != 1 {
+		t.Errorf("edits = %+v", e)
+	}
+}
+
+func TestPlanUnallocatedClaim(t *testing.T) {
+	c := catalogue(t, mod("x", "1", img))
+	claim, pod := claimAndPod(c, req{"main", resolve.ResourceName("x-1"), "x-1"})
+	claim.Status.Allocation = nil
+	_, err := planner(c, nil).Plan(claim, pod)
+	if err == nil || err.Error() != "claim ns/p-extended-resources-x is not allocated" {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func TestPlanUnmappedRequest(t *testing.T) {
+	c := catalogue(t, mod("x", "1", img))
+	claim, pod := claimAndPod(c, req{"main", resolve.ResourceName("x-1"), "x-1"})
+	pod.Status.ExtendedResourceClaimStatus.RequestMappings = nil
+	_, err := planner(c, nil).Plan(claim, pod)
+	if err == nil || err.Error() != "request container-0-request-0 is not mapped to a container" {
+		t.Errorf("err = %v", err)
+	}
+}
